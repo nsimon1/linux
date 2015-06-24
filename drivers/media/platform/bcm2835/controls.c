@@ -1255,6 +1255,37 @@ int set_framerate_params(struct bm2835_mmal_dev *dev)
 
 }
 
+int set_crop_area(struct bm2835_mmal_dev *dev)
+{
+	int ret;
+	struct mmal_rect rect;
+	int width = dev->capture.width;
+	int height = dev->capture.height;
+
+	dev->capture.crop.left = min(dev->capture.crop.left, width);
+	dev->capture.crop.top = min(dev->capture.crop.top, height);
+	dev->capture.crop.width = min(dev->capture.crop.width, width - dev->capture.crop.left);
+	dev->capture.crop.height = min(dev->capture.crop.height, height - dev->capture.crop.top);
+	rect.x = (dev->capture.crop.left << 16)/ width;
+	rect.y = (dev->capture.crop.top << 16) / height;
+	rect.width = (dev->capture.crop.width << 16) / width;
+	rect.height = (dev->capture.crop.height << 16) / height;
+	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
+		"Set crop area to %dx%d+%dx%d\n",
+		rect.width, rect.height, rect.x, rect.y);
+
+	ret = vchiq_mmal_port_parameter_set(dev->instance,
+				&dev->component[MMAL_COMPONENT_CAMERA]->control,
+				MMAL_PARAMETER_INPUT_CROP,
+				&rect, sizeof(rect));
+	if (ret)
+		v4l2_dbg(0, bcm2835_v4l2_debug, &dev->v4l2_dev,
+			"Failed set input crop, ret %d\n",
+			ret);
+
+	return ret;
+}
+
 int bm2835_mmal_init_controls(struct bm2835_mmal_dev *dev,
 			      struct v4l2_ctrl_handler *hdl)
 {

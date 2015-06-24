@@ -1442,6 +1442,34 @@ static int vidioc_s_parm(struct file *file, void *priv,
 	return 0;
 }
 
+static int vidioc_g_crop(struct file *file, void *fh,
+				struct v4l2_crop *c)
+{
+	struct bm2835_mmal_dev *dev = video_drvdata(file);
+
+	if (c->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
+		return -EINVAL;
+
+	c->c = dev->capture.crop;
+	return 0;
+}
+static int vidioc_s_crop(struct file *file, void *fh,
+				const struct v4l2_crop *c)
+{
+	struct bm2835_mmal_dev *dev = video_drvdata(file);
+
+	if (c->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
+		return -EINVAL;
+
+	dev->capture.crop.left = c->c.left;
+	dev->capture.crop.top = c->c.top;
+	dev->capture.crop.width = c->c.width;
+	dev->capture.crop.height = c->c.height;
+	set_crop_area(dev);
+
+	return 0;
+}
+
 static const struct v4l2_ioctl_ops camera0_ioctl_ops = {
 	/* overlay */
 	.vidioc_enum_fmt_vid_overlay = vidioc_enum_fmt_vid_overlay,
@@ -1480,6 +1508,10 @@ static const struct v4l2_ioctl_ops camera0_ioctl_ops = {
 	.vidioc_log_status = v4l2_ctrl_log_status,
 	.vidioc_subscribe_event = v4l2_ctrl_subscribe_event,
 	.vidioc_unsubscribe_event = v4l2_event_unsubscribe,
+
+	/* crop */
+	.vidioc_s_crop = vidioc_s_crop,
+	.vidioc_g_crop = vidioc_g_crop,
 };
 
 static const struct v4l2_ioctl_ops camera0_ioctl_ops_gstreamer = {
@@ -1721,6 +1753,11 @@ static int __init mmal_init(struct bm2835_mmal_dev *dev)
 	dev->capture.timeperframe = tpf_default;
 	dev->capture.enc_profile = V4L2_MPEG_VIDEO_H264_PROFILE_HIGH;
 	dev->capture.enc_level = V4L2_MPEG_VIDEO_H264_LEVEL_4_0;
+
+	dev->capture.crop.left = 0;
+	dev->capture.crop.top = 0;
+	dev->capture.crop.width = 0;
+	dev->capture.crop.height = 0;
 
 	/* get the preview component ready */
 	ret = vchiq_mmal_component_init(

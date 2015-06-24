@@ -103,6 +103,8 @@ struct bm2835_mmal_dev {
 		unsigned int  frame_count;
 		/* last frame completion */
 		struct completion  frame_cmplt;
+		/* crop area */
+		struct v4l2_rect crop;
 
 	} capture;
 
@@ -118,6 +120,7 @@ int bm2835_mmal_init_controls(
 
 int bm2835_mmal_set_all_camera_controls(struct bm2835_mmal_dev *dev);
 int set_framerate_params(struct bm2835_mmal_dev *dev);
+int set_crop_area(struct bm2835_mmal_dev *dev);
 
 /* Debug helpers */
 
