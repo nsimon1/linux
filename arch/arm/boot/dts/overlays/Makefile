@@ -6,6 +6,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	ads1015.dtbo \
 	ads1115.dtbo \
 	ads7846.dtbo \
+	adv7282m.dtbo \
 	akkordion-iqdacplus.dtbo \
 	allo-boss-dac-pcm512x-audio.dtbo \
 	allo-piano-dac-pcm512x-audio.dtbo \
@@ -59,6 +60,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	midi-uart0.dtbo \
 	mmc.dtbo \
 	mz61581.dtbo \
+	ov5647.dtbo \
 	pi3-act-led.dtbo \
 	pi3-disable-bt.dtbo \
 	pi3-disable-wifi.dtbo \
@@ -103,6 +105,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	spi2-1cs.dtbo \
 	spi2-2cs.dtbo \
 	spi2-3cs.dtbo \
+	tc358743.dtbo \
 	tinylcd35.dtbo \
 	uart1.dtbo \
 	vc4-fkms-v3d.dtbo \
