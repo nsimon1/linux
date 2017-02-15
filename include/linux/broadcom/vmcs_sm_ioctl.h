@@ -63,7 +63,10 @@ enum vmcs_sm_cmd_e {
 
 	VMCS_SM_CMD_CLEAN_INVALID,
 
-	VMCS_SM_CMD_LAST	/* Do no delete */
+	VMCS_SM_CMD_IMPORT_PTR,
+	VMCS_SM_CMD_IMPORT_DMABUF,
+
+	VMCS_SM_CMD_LAST	/* Do not delete */
 };
 
 /* Cache type supported, conveniently matches the user space definition in
@@ -175,6 +178,27 @@ struct vmcs_sm_ioctl_clean_invalid {
 	} s[8];
 };
 
+struct vmcs_sm_ioctl_import_ptr {
+	/* user -> kernel */
+	unsigned int addr;
+	unsigned int size;
+	enum vmcs_sm_cache_e cached;
+	char name[VMCS_SM_RESOURCE_NAME];
+
+	/* kernel -> user */
+	unsigned int handle;
+};
+
+struct vmcs_sm_ioctl_import_dmabuf {
+	/* user -> kernel */
+	unsigned int dmabuf;
+	enum vmcs_sm_cache_e cached;
+	char name[VMCS_SM_RESOURCE_NAME];
+
+	/* kernel -> user */
+	unsigned int handle;
+};
+
 /* IOCTL numbers */
 #define VMCS_SM_IOCTL_MEM_ALLOC\
 	_IOR(VMCS_SM_MAGIC_TYPE, VMCS_SM_CMD_ALLOC,\
@@ -240,6 +264,14 @@ struct vmcs_sm_ioctl_clean_invalid {
 #define VMCS_SM_IOCTL_HOST_WALK_PID_MAP\
 	_IOR(VMCS_SM_MAGIC_TYPE, VMCS_SM_CMD_HOST_WALK_PID_MAP,\
 	 struct vmcs_sm_ioctl_walk)
+
+#define VMCS_SM_IOCTL_MEM_IMPORT_PTR\
+	_IOR(VMCS_SM_MAGIC_TYPE, VMCS_SM_CMD_IMPORT_PTR,\
+	 struct vmcs_sm_ioctl_import_ptr)
+
+#define VMCS_SM_IOCTL_MEM_IMPORT_DMABUF\
+	_IOR(VMCS_SM_MAGIC_TYPE, VMCS_SM_CMD_IMPORT_DMABUF,\
+	 struct vmcs_sm_ioctl_import_dmabuf)
 
 /* ---- Variable Externs ------------------------------------------------- */
 

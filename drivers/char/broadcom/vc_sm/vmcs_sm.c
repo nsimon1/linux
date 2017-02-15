@@ -522,6 +522,8 @@ static int vc_sm_global_state_show(struct seq_file *s, void *v)
 				   map->res_usr_hdl);
 			seq_printf(s, "           USR-ADDR    0x%lx\n",
 				   map->res_addr);
+			seq_printf(s, "           SIZE        %d\n",
+				   map->resource->res_size);
 		}
 	}
 
@@ -2028,6 +2030,216 @@ error:
 	return ret;
 }
 
+/* Import a contiguous block of memory to be shared
+** with VC.
+*/
+int vc_sm_ioctl_import_ptr(struct SM_PRIV_DATA_T *private,
+			   struct vmcs_sm_ioctl_import_ptr *ioparam)
+{
+	int ret = 0;
+	int status;
+	struct SM_RESOURCE_T *resource;
+	struct VC_SM_IMPORT import = { 0 };
+	struct VC_SM_IMPORT_RESULT result = { 0 };
+
+	/* Setup our allocation parameters */
+	import.type = ((ioparam->cached == VMCS_SM_CACHE_VC) ||
+		       (ioparam->cached == VMCS_SM_CACHE_BOTH)) ?
+				VC_SM_ALLOC_CACHED : VC_SM_ALLOC_NON_CACHED;
+	if (*ioparam->name) {
+		memcpy(import.name, ioparam->name, sizeof(import.name) - 1);
+	} else {
+		memcpy(import.name, VMCS_SM_RESOURCE_NAME_DEFAULT,
+		       sizeof(VMCS_SM_RESOURCE_NAME_DEFAULT));
+	}
+	import.addr = (uint32_t)ioparam->addr;
+	import.size = ioparam->size;
+	import.allocator = current->tgid;
+
+	pr_err("[%s]: attempt to import \"%s\" data - type %u, addr %p, size %u\n",
+	       __func__, import.name, import.type,
+	       (void *)ioparam->addr, import.size);
+
+	/* Verify that the address block is contiguous */
+
+	//if (sgt->nents != 1)
+	//    return ERR_PTR(-EINVAL);
+
+	/* Allocate local resource to track this allocation.
+	 */
+	resource = kzalloc(sizeof(*resource), GFP_KERNEL);
+	if (!resource) {
+		ret = -ENOMEM;
+		goto error;
+	}
+	INIT_LIST_HEAD(&resource->map_list);
+	resource->ref_count++;
+	resource->pid = current->tgid;
+
+	/* Allocate the videocore resource.
+	 */
+	status = vc_vchi_sm_import(sm_state->sm_handle, &import, &result,
+				   &private->int_trans_id);
+	if (status == -EINTR) {
+		pr_err("[%s]: requesting import memory action restart (trans_id: %u)\n",
+		       __func__, private->int_trans_id);
+		ret = -ERESTARTSYS;
+		private->restart_sys = -EINTR;
+		private->int_action = VC_SM_MSG_TYPE_IMPORT;
+		goto error;
+	} else if (status != 0 || (status == 0 && result.res_handle == 0)) {
+		pr_err("[%s]: failed to import memory on videocore (status: %u, trans_id: %u)\n",
+		       __func__, status, private->int_trans_id);
+		ret = -ENOMEM;
+		resource->res_stats[ALLOC_FAIL]++;
+		goto error;
+	}
+
+	/* Keep track of the resource we created.
+	 */
+	resource->private = private;
+	resource->res_handle = result.res_handle;
+	resource->res_base_mem = (void *)ioparam->addr;
+	resource->res_size = import.size;
+	resource->res_cached = ioparam->cached;
+
+	/* Kernel/user GUID.  This global identifier is used for mmap'ing the
+	 * allocated region from user space, it is passed as the mmap'ing
+	 * offset, we use it to 'hide' the videocore handle/address.
+	 */
+	mutex_lock(&sm_state->lock);
+	resource->res_guid = ++sm_state->guid;
+	mutex_unlock(&sm_state->lock);
+	resource->res_guid <<= PAGE_SHIFT;
+
+	vmcs_sm_add_resource(private, resource);
+
+	pr_err("[%s]: imported data - guid %x, hdl %x, base address %p, size %d, cache %d\n",
+	       __func__, resource->res_guid, resource->res_handle,
+	       resource->res_base_mem, resource->res_size,
+	       resource->res_cached);
+
+	/* We're done */
+	resource->res_stats[ALLOC]++;
+	ioparam->handle = resource->res_guid;
+	return 0;
+
+error:
+	pr_err("[%s]: failed to import \"%s\" data (%i) - type %u, base %u, size %u\n",
+	       __func__, import.name, ret, import.type,
+	       import.addr, import.size);
+	if (resource) {
+		vc_sm_resource_deceased(resource, 1);
+		kfree(resource);
+	}
+	return ret;
+}
+
+/* Import a contiguous block of memory to be shared
+** with VC.
+*/
+int vc_sm_ioctl_import_dmabuf(struct SM_PRIV_DATA_T *private,
+			      struct vmcs_sm_ioctl_import_dmabuf *ioparam)
+{
+	int ret = 0;
+	int status;
+	struct SM_RESOURCE_T *resource;
+	struct VC_SM_IMPORT import = { 0 };
+	struct VC_SM_IMPORT_RESULT result = { 0 };
+
+	/* Setup our allocation parameters */
+	import.type = ((ioparam->cached == VMCS_SM_CACHE_VC) ||
+		       (ioparam->cached == VMCS_SM_CACHE_BOTH)) ?
+				VC_SM_ALLOC_CACHED : VC_SM_ALLOC_NON_CACHED;
+	if (*ioparam->name) {
+		memcpy(import.name, ioparam->name, sizeof(import.name) - 1);
+	} else {
+		memcpy(import.name, VMCS_SM_RESOURCE_NAME_DEFAULT,
+		       sizeof(VMCS_SM_RESOURCE_NAME_DEFAULT));
+	}
+/*    import.addr = (uint32_t)ioparam->addr;
+    import.size = ioparam->size;*/
+	import.allocator = current->tgid;
+
+	/*pr_err("[%s]: attempt to import \"%s\" data - type %u, addr %p, size %u\n",
+		__func__, import.name, import.type,
+		(void *)ioparam->addr, import.size);*/
+
+	/* Verify that the address block is contiguous */
+
+    //if (sgt->nents != 1)
+    //    return ERR_PTR(-EINVAL);
+
+	/* Allocate local resource to track this allocation.
+	 */
+	resource = kzalloc(sizeof(*resource), GFP_KERNEL);
+	if (!resource) {
+		ret = -ENOMEM;
+		goto error;
+	}
+	INIT_LIST_HEAD(&resource->map_list);
+	resource->ref_count++;
+	resource->pid = current->tgid;
+
+	/* Allocate the videocore resource.
+	 */
+	status = vc_vchi_sm_import(sm_state->sm_handle, &import, &result,
+				   &private->int_trans_id);
+	if (status == -EINTR) {
+		pr_err("[%s]: requesting import memory action restart (trans_id: %u)\n",
+		       __func__, private->int_trans_id);
+		ret = -ERESTARTSYS;
+		private->restart_sys = -EINTR;
+		private->int_action = VC_SM_MSG_TYPE_IMPORT;
+		goto error;
+	} else if (status != 0 || (status == 0 && result.res_handle == 0)) {
+		pr_err("[%s]: failed to import memory on videocore (status: %u, trans_id: %u)\n",
+		       __func__, status, private->int_trans_id);
+		ret = -ENOMEM;
+		resource->res_stats[ALLOC_FAIL]++;
+		goto error;
+	}
+
+	/* Keep track of the resource we created.
+	 */
+	resource->private = private;
+	resource->res_handle = result.res_handle;
+//	resource->res_base_mem = (void *)ioparam->addr;
+//	resource->res_size = import.size;
+	resource->res_cached = ioparam->cached;
+
+	/* Kernel/user GUID.  This global identifier is used for mmap'ing the
+	 * allocated region from user space, it is passed as the mmap'ing
+	 * offset, we use it to 'hide' the videocore handle/address.
+	 */
+	mutex_lock(&sm_state->lock);
+	resource->res_guid = ++sm_state->guid;
+	mutex_unlock(&sm_state->lock);
+	resource->res_guid <<= PAGE_SHIFT;
+
+	vmcs_sm_add_resource(private, resource);
+
+/*	pr_err("[%s]: imported data - guid %x, hdl %x, base address %p, size %d, cache %d\n",
+		__func__, resource->res_guid, resource->res_handle,
+		resource->res_base_mem, resource->res_size,
+		resource->res_cached);*/
+
+	/* We're done */
+	resource->res_stats[ALLOC]++;
+	ioparam->handle = resource->res_guid;
+	return 0;
+
+error:
+/*	pr_err("[%s]: failed to import \"%s\" data (%i) - type %u, base %u, size %u\n",
+	     __func__, import.name, ret, import.type,
+	     import.addr, import.size);*/
+	if (resource) {
+		vc_sm_resource_deceased(resource, 1);
+		kfree(resource);
+	}
+	return ret;
+}
+
 /* Handle control from host. */
 static long vc_sm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
@@ -2129,6 +2341,72 @@ static long vc_sm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				};
 				pr_err("[%s]: failed to copy-to-user for cmd %x\n",
 						__func__, cmdnr);
+				vc_sm_ioctl_free(file_data, &freeparam);
+				ret = -EFAULT;
+			}
+
+			/* Done.
+			 */
+			goto out;
+		}
+		break;
+
+	case VMCS_SM_CMD_IMPORT_PTR:
+		{
+			struct vmcs_sm_ioctl_import_ptr ioparam;
+
+			/* Get the parameter data.
+			 */
+			if (copy_from_user
+			    (&ioparam, (void *)arg, sizeof(ioparam)) != 0) {
+				pr_err("[%s]: failed to copy-from-user for cmd %x\n",
+				       __func__, cmdnr);
+				ret = -EFAULT;
+				goto out;
+			}
+
+			ret = vc_sm_ioctl_import_ptr(file_data, &ioparam);
+			if (!ret &&
+			    (copy_to_user((void *)arg,
+					  &ioparam, sizeof(ioparam)) != 0)) {
+				struct vmcs_sm_ioctl_free freeparam = {
+					ioparam.handle
+				};
+				pr_err("[%s]: failed to copy-to-user for cmd %x\n",
+				       __func__, cmdnr);
+				vc_sm_ioctl_free(file_data, &freeparam);
+				ret = -EFAULT;
+			}
+
+			/* Done.
+			 */
+			goto out;
+		}
+		break;
+
+	case VMCS_SM_CMD_IMPORT_DMABUF:
+		{
+			struct vmcs_sm_ioctl_import_dmabuf ioparam;
+
+			/* Get the parameter data.
+			 */
+			if (copy_from_user
+			    (&ioparam, (void *)arg, sizeof(ioparam)) != 0) {
+				pr_err("[%s]: failed to copy-from-user for cmd %x\n",
+				       __func__, cmdnr);
+				ret = -EFAULT;
+				goto out;
+			}
+
+			ret = vc_sm_ioctl_import_dmabuf(file_data, &ioparam);
+			if (!ret &&
+			    (copy_to_user((void *)arg,
+					  &ioparam, sizeof(ioparam)) != 0)) {
+				struct vmcs_sm_ioctl_free freeparam = {
+					ioparam.handle
+				};
+				pr_err("[%s]: failed to copy-to-user for cmd %x\n",
+				       __func__, cmdnr);
 				vc_sm_ioctl_free(file_data, &freeparam);
 				ret = -EFAULT;
 			}
@@ -3215,6 +3493,48 @@ int vc_sm_map(int handle, unsigned int sm_addr, VC_SM_LOCK_CACHE_MODE_T mode,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(vc_sm_map);
+
+/* Import a contiguous block of memory to be shared with VC. */
+int vc_sm_import(struct VC_SM_IMPORT *import, int *handle)
+{
+	struct vmcs_sm_ioctl_import_ptr ioparam = { 0 };
+	int ret;
+	struct SM_RESOURCE_T *resource;
+
+	/* Validate we can work with this device.
+	 */
+	if (!sm_state || !import || !handle) {
+		pr_err("[%s]: invalid input\n", __func__);
+		return -EPERM;
+	}
+
+	ioparam.addr = (uint32_t)import->addr;
+	ioparam.size = import->size;
+	ioparam.cached =
+	    import->type == VC_SM_ALLOC_CACHED ? VMCS_SM_CACHE_VC : 0;
+
+	ret = vc_sm_ioctl_import_ptr(sm_state->data_knl, &ioparam);
+
+	if (ret == 0) {
+		resource =
+		    vmcs_sm_acquire_resource(sm_state->data_knl,
+					     ioparam.handle);
+		if (resource) {
+			resource->pid = 0;
+			vmcs_sm_release_resource(resource, 0);
+
+			/* Assign valid handle at this time.
+			 */
+			*handle = ioparam.handle;
+		} else {
+			ret = -ENOMEM;
+		}
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(vc_sm_import);
+
 #endif
 
 late_initcall(vc_sm_init);
