@@ -23,3 +23,14 @@ config VIDEO_BCM2835_MMAL
 
 
 endif # VIDEO_BM2835
+
+config VIDEO_BCM2835_UNICAM
+	tristate "Broadcom BCM2835 Unicam video capture driver"
+	depends on VIDEO_V4L2 && VIDEO_V4L2_SUBDEV_API && (ARCH_BCM2708 || ARCH_BCM2709 || ARCH_BCM2835)
+	select VIDEOBUF2_DMA_CONTIG
+	---help---
+	  Say Y here to enable V4L2 subdevice for CSI2 receiver.
+	  This operates over the VCHIQ interface to a service running on VideoCore.
+
+	   To compile this driver as a module, choose M here. The module
+	   will be called bcm2835-unicam.

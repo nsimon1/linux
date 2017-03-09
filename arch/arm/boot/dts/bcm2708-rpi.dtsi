@@ -108,6 +108,14 @@
 	power-domains = <&power RPI_POWER_DOMAIN_USB>;
 };
 
+&csi0 {
+	power-domains = <&power RPI_POWER_DOMAIN_UNICAM0>;
+};
+
+&csi1 {
+	power-domains = <&power RPI_POWER_DOMAIN_UNICAM1>;
+};
+
 &vec {
 	status = "disabled";
 };
