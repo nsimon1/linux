@@ -1777,8 +1777,13 @@ static int tc358743_probe_of(struct tc358743_state *state)
 	state->pdata.refclk_hz = clk_get_rate(refclk);
 	state->pdata.ddc5v_delay = DDC5V_DELAY_100_MS;
 	state->pdata.enable_hdcp = false;
-	/* A FIFO level of 16 should be enough for 2-lane 720p60 at 594 MHz. */
-	state->pdata.fifo_level = 16;
+	/*
+	 * A FIFO level of 16 should be enough for 2-lane 720p60 at 594 MHz.
+	 * On 1-lane a value of 103 is required for VGA60, 99 for 576P50,
+	 * or 98 for 480P60.
+	 * Adopt 110 to cope with all those use cases.
+	 */
+	state->pdata.fifo_level = 110;
 	/*
 	 * The PLL input clock is obtained by dividing refclk by pll_prd.
 	 * It must be between 6 MHz and 40 MHz, lower frequency is better.
