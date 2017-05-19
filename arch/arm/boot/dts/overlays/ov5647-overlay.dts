@@ -17,6 +17,7 @@
 				reg = <0x36>;
 				status = "okay";
 
+				pwdn-gpios = <&gpio 41 1>;
 				clocks = <&ov5647_clk>;
 
 				ov5647_clk: camera-clk {
