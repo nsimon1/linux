@@ -440,16 +440,71 @@ create_pagelist(char __user *buf, size_t count, unsigned short type,
 		}
 		*need_release = 0; /* do not try and release ioremapped pages */
 	} else {
+		unsigned long buf_start = (unsigned long)buf & ~(PAGE_SIZE - 1);
 		down_read(&task->mm->mmap_sem);
-		actual_pages = get_user_pages(
-				          (unsigned long)buf & ~(PAGE_SIZE - 1),
-					  num_pages,
-					  (type == PAGELIST_READ) ? FOLL_WRITE : 0,
-					  pages,
-					  NULL /*vmas */);
+		actual_pages = get_user_pages(buf_start,
+					      num_pages,
+					      (type == PAGELIST_READ) ? FOLL_WRITE : 0,
+					      pages,
+					      NULL /*vmas */);
 		up_read(&task->mm->mmap_sem);
 
-		if (actual_pages != num_pages) {
+		if (actual_pages <= 0) {
+			struct vm_area_struct *vma;
+
+			vma = find_exact_vma(task->mm,
+					     buf_start,
+					     buf_start + (num_pages * PAGE_SIZE));
+			if (vma &&
+			    vma->vm_flags & VM_PFNMAP) {
+				/* PFN MAP, so get_user_pages would fail */
+				unsigned long pfn;
+				int ret;
+				unsigned long length = count;
+				unsigned int off = offset;
+				int dir = (type == PAGELIST_WRITE) ?
+					DMA_TO_DEVICE : DMA_FROM_DEVICE;
+
+				for (actual_pages = 0; actual_pages < num_pages;
+				     actual_pages++) {
+					struct page *page;
+					size_t bytes;
+
+					ret = follow_pfn(vma,
+							 buf_start,
+							 &pfn);
+					if (ret) {
+						printk("Follow_pfn failed, error %d\n", ret);
+						/* FIXME handle the error */
+					}
+					page = pfn_to_page(pfn);
+					if (IS_ERR(page)) {
+						printk("pfn_to_age failed, error %d\n", IS_ERR(page));
+						/* FIXME handle the error */
+					}
+
+					bytes = PAGE_SIZE - off;
+
+					if (bytes > length)
+						bytes = length;
+					pages[actual_pages] = page;
+					dmac_map_area(page_address(page) + off, bytes, dir);
+					length -= bytes;
+					off = 0;
+					buf_start += PAGE_SIZE;
+				}
+				*need_release = 0; /* do not try and release PFNMAP pages */
+			} else {
+				while (actual_pages > 0) {
+					actual_pages--;
+					put_page(pages[actual_pages]);
+				}
+				kfree(pagelist);
+				if (actual_pages == 0)
+					actual_pages = -ENOMEM;
+				return actual_pages;
+			}
+		} else if (actual_pages != num_pages) {
 			vchiq_log_info(vchiq_arm_log_level,
 				       "create_pagelist - only %d/%d pages locked",
 				       actual_pages,
@@ -465,8 +520,9 @@ create_pagelist(char __user *buf, size_t count, unsigned short type,
 			if (actual_pages == 0)
 				actual_pages = -ENOMEM;
 			return actual_pages;
+		} else {
+			*need_release = 1; /* release user pages */
 		}
-		*need_release = 1; /* release user pages */
 	}
 
 	pagelist->length = count;
