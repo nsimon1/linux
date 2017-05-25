@@ -573,7 +573,7 @@ static int unicam_calc_format_size(struct unicam_device *dev,
 				   const struct unicam_fmt *fmt,
 				   struct v4l2_format *f)
 {
-	int min_bytesperline;
+	int min_bytesperline, min_sizeimage;
 
 	if (!fmt) {
 		unicam_dbg(3, dev, "No unicam_fmt provided!\n");
@@ -584,14 +584,15 @@ static int unicam_calc_format_size(struct unicam_device *dev,
 			      &f->fmt.pix.height, 16, MAX_HEIGHT, 0, 0);
 
 	min_bytesperline = bytes_per_line(f->fmt.pix.width, fmt);
-	unicam_dbg(1, dev, "min_bpl %d, requested is %d\n",
-		   min_bytesperline, f->fmt.pix.bytesperline);
 	if (f->fmt.pix.bytesperline > min_bytesperline)
 		f->fmt.pix.bytesperline = ALIGN(f->fmt.pix.bytesperline, 16);
 	else
 		f->fmt.pix.bytesperline = min_bytesperline;
-	f->fmt.pix.sizeimage = f->fmt.pix.height *
-			       f->fmt.pix.bytesperline;
+
+	min_sizeimage = f->fmt.pix.height *
+			f->fmt.pix.bytesperline;
+	if (f->fmt.pix.sizeimage < min_sizeimage)
+		f->fmt.pix.sizeimage = min_sizeimage;
 
 	unicam_dbg(1, dev, "width %d, fmt %s, depth %d\n",
 		   f->fmt.pix.width, fourcc_to_str(f->fmt.pix.pixelformat),
@@ -839,6 +840,7 @@ static int unicam_s_fmt_vid_cap(struct file *file, void *priv,
 		   fourcc_to_str(fmt->fourcc));
 	dev->v_fmt.fmt.pix.pixelformat = fmt->fourcc;
 	dev->v_fmt.fmt.pix.bytesperline = f->fmt.pix.bytesperline;
+	dev->v_fmt.fmt.pix.sizeimage = f->fmt.pix.sizeimage;
 	unicam_calc_format_size(dev, fmt, &dev->v_fmt);
 	dev->fmt = fmt;
 	dev->m_fmt = mbus_fmt;
