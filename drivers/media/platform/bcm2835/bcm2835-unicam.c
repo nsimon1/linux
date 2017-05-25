@@ -527,7 +527,7 @@ static inline int bytes_per_line(u32 width, const struct unicam_fmt *fmt)
 static int __subdev_get_format(struct unicam_device *dev,
 			       struct v4l2_mbus_framefmt *fmt)
 {
-	struct v4l2_subdev_format sd_fmt;
+	struct v4l2_subdev_format sd_fmt = {0};
 	struct v4l2_mbus_framefmt *mbus_fmt = &sd_fmt.format;
 	int ret;
 
@@ -795,7 +795,7 @@ static int unicam_s_fmt_vid_cap(struct file *file, void *priv,
 	struct unicam_device *dev = video_drvdata(file);
 	struct vb2_queue *q = &dev->buffer_queue;
 	const struct unicam_fmt *fmt;
-	struct v4l2_mbus_framefmt mbus_fmt;
+	struct v4l2_mbus_framefmt mbus_fmt = {0};
 	int ret;
 
 	if (vb2_is_busy(q)) {
@@ -830,6 +830,11 @@ static int unicam_s_fmt_vid_cap(struct file *file, void *priv,
 
 	v4l2_fill_pix_format(&dev->v_fmt.fmt.pix, &mbus_fmt);
 	dev->v_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	dev->v_fmt.fmt.pix.pixelformat = fmt->fourcc;
+	dev->v_fmt.fmt.pix.bytesperline = f->fmt.pix.bytesperline;
+	dev->v_fmt.fmt.pix.sizeimage = f->fmt.pix.sizeimage;
+	unicam_calc_format_size(dev, fmt, &dev->v_fmt);
+
 	unicam_dbg(3, dev,
 		   "%s %dx%d, mbus_fmt %s, V4L2 pix %s. About to overwrite pix with %s\n",
 		   __func__,
@@ -838,10 +843,7 @@ static int unicam_s_fmt_vid_cap(struct file *file, void *priv,
 		   fourcc_to_str(mbus_fmt.code),
 		   fourcc_to_str(dev->v_fmt.fmt.pix.pixelformat),
 		   fourcc_to_str(fmt->fourcc));
-	dev->v_fmt.fmt.pix.pixelformat = fmt->fourcc;
-	dev->v_fmt.fmt.pix.bytesperline = f->fmt.pix.bytesperline;
-	dev->v_fmt.fmt.pix.sizeimage = f->fmt.pix.sizeimage;
-	unicam_calc_format_size(dev, fmt, &dev->v_fmt);
+
 	dev->fmt = fmt;
 	dev->m_fmt = mbus_fmt;
 	*f = dev->v_fmt;
@@ -1342,7 +1344,11 @@ static int unicam_s_input(struct file *file, void *priv, unsigned int i)
 	struct unicam_device *dev = video_drvdata(file);
 	int ret;
 
-	ret =  v4l2_subdev_call(dev->sensor, video, s_routing, i, 0, 0);
+	if (v4l2_subdev_has_op(dev->sensor, video, s_routing))
+		ret =  v4l2_subdev_call(dev->sensor, video, s_routing, i, 0, 0);
+	else
+		ret = -EINVAL;	/* v4l2-compliance insists on -EINVAL */
+
 	/* Must always be able to set input to 0 */
 	if (!i)
 		ret = 0;
