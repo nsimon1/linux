@@ -191,7 +191,7 @@ struct vmcs_sm_ioctl_import_ptr {
 
 struct vmcs_sm_ioctl_import_dmabuf {
 	/* user -> kernel */
-	unsigned int dmabuf;
+	int dmabuf_fd;
 	enum vmcs_sm_cache_e cached;
 	char name[VMCS_SM_RESOURCE_NAME];
 

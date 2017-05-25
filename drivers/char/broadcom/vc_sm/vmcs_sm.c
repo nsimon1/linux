@@ -19,6 +19,7 @@
 #include <linux/device.h>
 #include <linux/debugfs.h>
 #include <linux/dma-mapping.h>
+#include <linux/dma-buf.h>
 #include <linux/errno.h>
 #include <linux/fs.h>
 #include <linux/hugetlb.h>
@@ -2146,6 +2147,9 @@ int vc_sm_ioctl_import_dmabuf(struct SM_PRIV_DATA_T *private,
 	struct SM_RESOURCE_T *resource;
 	struct VC_SM_IMPORT import = { 0 };
 	struct VC_SM_IMPORT_RESULT result = { 0 };
+	struct dma_buf *dma_buf;
+	struct dma_buf_attachment *attach;
+	struct sg_table *sgt;
 
 	/* Setup our allocation parameters */
 	import.type = ((ioparam->cached == VMCS_SM_CACHE_VC) ||
@@ -2157,18 +2161,35 @@ int vc_sm_ioctl_import_dmabuf(struct SM_PRIV_DATA_T *private,
 		memcpy(import.name, VMCS_SM_RESOURCE_NAME_DEFAULT,
 		       sizeof(VMCS_SM_RESOURCE_NAME_DEFAULT));
 	}
-/*    import.addr = (uint32_t)ioparam->addr;
-    import.size = ioparam->size;*/
+	dma_buf = dma_buf_get(ioparam->dmabuf_fd);
+	if (IS_ERR(dma_buf))
+		return PTR_ERR(dma_buf);
+
+	attach = dma_buf_attach(dma_buf, sm_state->sm_dev);
+	if (IS_ERR(attach))
+		return PTR_ERR(attach);
+
+	get_dma_buf(dma_buf);	/* Increment ref count */
+
+	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+	if (IS_ERR(sgt)) {
+		ret = PTR_ERR(sgt);
+		goto error;
+	}
+
+	/* Verify that the address block is contiguous */
+	if (sgt->nents != 1)
+		/* FIXME: Clean up on error */
+		return -EINVAL;
+
+	import.addr = (uint32_t)sg_dma_address(sgt->sgl);
+	import.size = sg_dma_len(sgt->sgl);
 	import.allocator = current->tgid;
 
 	/*pr_err("[%s]: attempt to import \"%s\" data - type %u, addr %p, size %u\n",
 		__func__, import.name, import.type,
 		(void *)ioparam->addr, import.size);*/
 
-	/* Verify that the address block is contiguous */
-
-    //if (sgt->nents != 1)
-    //    return ERR_PTR(-EINVAL);
 
 	/* Allocate local resource to track this allocation.
 	 */
@@ -3510,8 +3531,8 @@ int vc_sm_import(struct VC_SM_IMPORT *import, int *handle)
 
 	ioparam.addr = (uint32_t)import->addr;
 	ioparam.size = import->size;
-	ioparam.cached =
-	    import->type == VC_SM_ALLOC_CACHED ? VMCS_SM_CACHE_VC : 0;
+	ioparam.cached = import->type == VC_SM_ALLOC_CACHED ?
+						VMCS_SM_CACHE_VC : 0;
 
 	ret = vc_sm_ioctl_import_ptr(sm_state->data_knl, &ioparam);
 

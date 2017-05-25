@@ -226,9 +226,9 @@ typedef union {
 	VC_SM_LOCK_RESULT_T lock_result;
 	VC_SM_RESULT_T result;
 	VC_SM_FREE_ALL_T free_all;
-	VC_SM_IMPORT_T import;
-	VC_SM_IMPORT_RESULT_T import_result;
-	VC_SM_RELEASED_T released;
+	struct VC_SM_IMPORT import;
+	struct VC_SM_IMPORT_RESULT import_result;
+	struct VC_SM_RELEASED released;
 } VC_SM_MSG_UNION_T;
 
 #endif /* __VC_SM_DEFS_H__INCLUDED__ */

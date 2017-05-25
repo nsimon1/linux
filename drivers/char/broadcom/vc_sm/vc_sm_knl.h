@@ -54,6 +54,6 @@ int vc_sm_map(int handle, unsigned int sm_addr, VC_SM_LOCK_CACHE_MODE_T mode,
 
 /* Import a block of memory into the GPU space.
 */
-int vc_sm_import(VC_SM_IMPORT_T *import, int *handle);
+int vc_sm_import(struct VC_SM_IMPORT *import, int *handle);
 
 #endif /* __VC_SM_KNL_H__INCLUDED__ */
