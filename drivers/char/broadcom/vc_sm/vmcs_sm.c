@@ -2144,7 +2144,7 @@ int vc_sm_ioctl_import_dmabuf(struct SM_PRIV_DATA_T *private,
 {
 	int ret = 0;
 	int status;
-	struct SM_RESOURCE_T *resource;
+	struct SM_RESOURCE_T *resource = NULL;
 	struct VC_SM_IMPORT import = { 0 };
 	struct VC_SM_IMPORT_RESULT result = { 0 };
 	struct dma_buf *dma_buf;
