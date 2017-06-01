@@ -440,7 +440,7 @@ create_pagelist(char __user *buf, size_t count, unsigned short type,
 		}
 		*need_release = 0; /* do not try and release ioremapped pages */
 	} else {
-		unsigned long buf_start = (unsigned long)buf & ~(PAGE_SIZE - 1);
+		unsigned long buf_start = (unsigned long)buf & PAGE_MASK;
 		down_read(&task->mm->mmap_sem);
 		actual_pages = get_user_pages(buf_start,
 					      num_pages,
