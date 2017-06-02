@@ -12,7 +12,7 @@
 			#size-cells = <0>;
 			status = "okay";
 
-			tc358743: tc358743@0f {
+			tc358743@0f {
 				compatible = "toshiba,tc358743";
 				reg = <0x0f>;
 				status = "okay";
@@ -27,10 +27,10 @@
 				};
 
 				port {
-					tc358743_0: endpoint {
+					tc358743: endpoint {
 						remote-endpoint = <&csi1>;
 						clock-lanes = <0>;
-						data-lanes = <1 2 3 4>;
+						data-lanes = <1 2>;
 						clock-noncontinuous;
 						link-frequencies =
 							/bits/ 64 <297000000>;
@@ -51,10 +51,10 @@
 				#address-cells = <1>;
 				#size-cells = <0>;
 
-				csi2_0: port@0 {
+				port@0 {
 					reg = <0>;
 					endpoint {
-						remote-endpoint = <&tc358743_0>;
+						remote-endpoint = <&tc358743>;
 
 					};
 				};
