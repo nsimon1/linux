@@ -78,8 +78,6 @@ MODULE_PARM_DESC(debug, "Debug level 0-8");
 #define MAX_WIDTH	((65536 / 4) - 1)
 #define MAX_HEIGHT	MAX_WIDTH
 
-#define MAX_UNICAM_LANES	4
-
 /*
  * struct unicam_fmt - Unicam media bus format information
  * @pixelformat: V4L2 pixel format FCC identifier.
@@ -310,7 +308,6 @@ struct unicam_dmaqueue {
 
 	/* Counters to control fps rate */
 	int			frame;
-	int			ini_jiffies;
 };
 
 struct unicam_buffer {
@@ -321,9 +318,11 @@ struct unicam_buffer {
 struct unicam_cfg {
 	/* peripheral base address */
 	void __iomem *base;
-	/* clock enable base address */
-	void __iomem *clk_en_base;
+	/* clock gating base address */
+	void __iomem *clk_gate_base;
 	unsigned int irq;
+
+	unsigned int periph_max_data_lanes;
 };
 
 #define MAX_POSSIBLE_FMTS \
@@ -353,8 +352,6 @@ struct unicam_device {
 	struct platform_device *pdev;
 	/* subdevice async Notifier */
 	struct v4l2_async_notifier notifier;
-	/* Indicates id of the field which is being displayed */
-	unsigned int field;
 	unsigned int sequence;
 
 	/* ptr to  sub device */
@@ -401,8 +398,8 @@ struct unicam_device {
 };
 
 /* Hardware access */
-#define clk_write(dev, val) writel((val) | 0x5a000000, (dev)->clk_en_base)
-#define clk_read(dev) readl((dev)->clk_en_base)
+#define clk_write(dev, val) writel((val) | 0x5a000000, (dev)->clk_gate_base)
+#define clk_read(dev) readl((dev)->clk_gate_base)
 
 #define reg_read(dev, offset) readl((dev)->base + (offset))
 #define reg_write(dev, offset, val) writel(val, (dev)->base + (offset))
@@ -656,8 +653,10 @@ static irqreturn_t unicam_isr(int irq, void *dev)
 	struct unicam_dmaqueue *dma_q = &unicam->dma_queue;
 
 	/*
-	 * FIXME: Hack so if the VPU plays with this
-	 * Unicam instance we don't blow up.
+	 * Don't service interrupts if not streaming.
+	 * Avoids issues if the VPU should enable the
+	 * peripheral without the kernel knowing (that
+	 * shouldn't happen, but causes issues if it does).
 	 */
 	if (!unicam->streaming)
 		return IRQ_HANDLED;
@@ -984,20 +983,21 @@ static void unicam_cfg_image_id(struct unicam_device *dev)
 {
 	struct unicam_cfg *cfg = &dev->cfg;
 
-	if (dev->bus_type != V4L2_MBUS_CSI2) {
-		reg_write(cfg, UNICAM_IDI0,
-			  (0x80 | dev->fmt->csi_dt));
-	} else { /* CSI2 mode */
+	if (dev->bus_type == V4L2_MBUS_CSI2) {
+		/* CSI2 mode */
 		reg_write(cfg, UNICAM_IDI0,
 			  (dev->virtual_channel << 6) |
 			  dev->fmt->csi_dt);
+	} else { /* CCP2 mode */
+		reg_write(cfg, UNICAM_IDI0,
+			  (0x80 | dev->fmt->csi_dt));
 	}
 }
 
 void unicam_start_rx(struct unicam_device *dev, unsigned long addr)
 {
 	u32 val;
-	int i;
+	unsigned int i;
 	struct unicam_cfg *cfg = &dev->cfg;
 	int line_int_freq = dev->v_fmt.fmt.pix.height >> 2;
 
@@ -1086,11 +1086,6 @@ void unicam_start_rx(struct unicam_device *dev, unsigned long addr)
 	reg_write(cfg, UNICAM_CLK, val);
 
 	/* Enable required data lanes */
-	/*
-	 * FIXME: Only CSI1 has 4 data lanes. CSI0 has 2.
-	 * Only 2 lanes are brought out on most Pi platforms too.
-	 * Development currently only on CSI1.
-	 */
 	val = 0;
 	set_field(&val, 1, UNICAM_DLE);
 	set_field(&val, 1, UNICAM_DLLPE);
@@ -1100,13 +1095,15 @@ void unicam_start_rx(struct unicam_device *dev, unsigned long addr)
 		val = 0;
 	reg_write(cfg, UNICAM_DAT1, val);
 
-	if (dev->active_data_lanes == 2)
-		val = 0;
-	reg_write(cfg, UNICAM_DAT2, val);
+	if (dev->cfg.periph_max_data_lanes > 2) {
+		if (dev->active_data_lanes == 2)
+			val = 0;
+		reg_write(cfg, UNICAM_DAT2, val);
 
-	if (dev->active_data_lanes == 3)
-		val = 0;
-	reg_write(cfg, UNICAM_DAT3, val);
+		if (dev->active_data_lanes == 3)
+			val = 0;
+		reg_write(cfg, UNICAM_DAT3, val);
+	}
 
 	unicam_wr_dma_config(dev, dev->v_fmt.fmt.pix.bytesperline);
 	unicam_wr_dma_addr(dev, addr);
@@ -1149,12 +1146,7 @@ static void unicam_disable(struct unicam_device *dev)
 	reg_write(cfg, UNICAM_DAT0, 0);
 	reg_write(cfg, UNICAM_DAT1, 0);
 
-	/*
-	 * FIXME: Only CSI1 has 4 data lanes. CSI0 has 2.
-	 * Only 2 lanes are brought out on most Pi platforms too.
-	 * Development currently only on CSI1.
-	 */
-	if (1) {
+	if (dev->cfg.periph_max_data_lanes > 2) {
 		reg_write(cfg, UNICAM_DAT2, 0);
 		reg_write(cfg, UNICAM_DAT3, 0);
 	}
@@ -1228,7 +1220,15 @@ static int unicam_start_streaming(struct vb2_queue *vq, unsigned int count)
 			break;
 		}
 	}
-	unicam_dbg(1, dev, "Running with %d data lanes\n",
+	if (dev->active_data_lanes > dev->cfg.periph_max_data_lanes) {
+		unicam_err(dev, "Device has requested %u data lanes, which is >%u supported by peripheral",
+			   dev->active_data_lanes,
+			   dev->cfg.periph_max_data_lanes);
+		/* FIXME: THIS ERROR PATH THROWS WARNINGS */
+		goto err_pm_put;
+	}
+
+	unicam_dbg(1, dev, "Running with %u data lanes\n",
 		   dev->active_data_lanes);
 
 	ret = clk_set_rate(dev->clock, 100 * 1000 * 1000);
@@ -1790,7 +1790,8 @@ static int of_unicam_connect_subdevs(struct unicam_device *dev)
 			*sensor_node, *parent;
 	struct v4l2_of_endpoint *endpoint;
 	struct v4l2_async_subdev *asd;
-	int ret, lane;
+	int ret;
+	unsigned int lane;
 	struct v4l2_async_subdev **subdevs = NULL;
 
 	parent = pdev->dev.of_node;
@@ -1803,6 +1804,10 @@ static int of_unicam_connect_subdevs(struct unicam_device *dev)
 	remote_ep = NULL;
 	sensor_node = NULL;
 	ret = -EINVAL;
+
+	dev->cfg.periph_max_data_lanes = 2;
+	of_property_read_u32(parent, "max_data_lanes",
+			     &dev->cfg.periph_max_data_lanes);
 
 	unicam_dbg(3, dev, "Scanning Port node for csi2 port\n");
 	port = of_get_port(parent);
@@ -1863,14 +1868,12 @@ static int of_unicam_connect_subdevs(struct unicam_device *dev)
 
 	/* Store number of data lanes */
 	dev->max_data_lanes = endpoint->bus.mipi_csi2.num_data_lanes;
-	/*
-	 * FIXME: Different instances of the hardware have different max
-	 * data lane counts.
-	 */
-	if (dev->max_data_lanes > MAX_UNICAM_LANES) {
+
+	if (dev->max_data_lanes > dev->cfg.periph_max_data_lanes) {
 		/* We can support CCP2 too, but no enum defined for that. */
-		unicam_err(dev, "Subdevice %s wants too many data lanes (%d)\n",
-			   sensor_node->name, dev->max_data_lanes);
+		unicam_err(dev, "Subdevice %s wants too many data lanes (%u > %u)\n",
+			   sensor_node->name, dev->max_data_lanes,
+			   dev->cfg.periph_max_data_lanes);
 		goto cleanup_exit;
 	}
 	for (lane = 0; lane < dev->max_data_lanes; lane++) {
@@ -1881,7 +1884,7 @@ static int of_unicam_connect_subdevs(struct unicam_device *dev)
 		}
 	}
 
-	unicam_dbg(3, dev, "Pv4l2-endpoint: CSI2\n");
+	unicam_dbg(3, dev, "v4l2-endpoint: CSI2\n");
 	unicam_dbg(3, dev, "Virtual Channel=%d\n", dev->virtual_channel);
 	unicam_dbg(3, dev, "flags=0x%08x\n", endpoint->bus.mipi_csi2.flags);
 	unicam_dbg(3, dev, "clock_lane=%d\n",
@@ -1890,7 +1893,7 @@ static int of_unicam_connect_subdevs(struct unicam_device *dev)
 		   endpoint->bus.mipi_csi2.num_data_lanes);
 	unicam_dbg(3, dev, "data_lanes= <\n");
 	for (lane = 0; lane < endpoint->bus.mipi_csi2.num_data_lanes; lane++)
-		unicam_dbg(3, dev, "\t%d\n",
+		unicam_dbg(3, dev, "\t%u\n",
 			   endpoint->bus.mipi_csi2.data_lanes[lane]);
 	unicam_dbg(3, dev, "\t>\n");
 
@@ -1956,10 +1959,10 @@ static int unicam_probe(struct platform_device *pdev)
 	}
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-	unicam_cfg->clk_en_base = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(unicam_cfg->clk_en_base)) {
+	unicam_cfg->clk_gate_base = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(unicam_cfg->clk_gate_base)) {
 		unicam_err(unicam, "Failed to get 2nd ìo block\n");
-		return PTR_ERR(unicam_cfg->clk_en_base);
+		return PTR_ERR(unicam_cfg->clk_gate_base);
 	}
 
 	unicam->clock = devm_clk_get(&pdev->dev, "lp_clock");
