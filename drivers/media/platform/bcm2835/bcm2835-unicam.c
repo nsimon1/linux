@@ -889,8 +889,7 @@ static int unicam_buffer_prepare(struct vb2_buffer *vb)
 
 	size = dev->v_fmt.fmt.pix.sizeimage;
 	if (vb2_plane_size(vb, 0) < size) {
-		unicam_err(dev,
-			   "data will not fit into plane (%lu < %lu)\n",
+		unicam_err(dev, "data will not fit into plane (%lu < %lu)\n",
 			   vb2_plane_size(vb, 0), size);
 		return -EINVAL;
 	}
@@ -2051,11 +2050,6 @@ static int unicam_probe(struct platform_device *pdev)
 	}
 	/* Enabling module functional clock */
 	pm_runtime_enable(&pdev->dev);
-
-	/* for now just enable it here instead of waiting for the open */
-	pm_runtime_get_sync(&pdev->dev);
-
-	pm_runtime_put_sync(&pdev->dev);
 
 	return 0;
 
