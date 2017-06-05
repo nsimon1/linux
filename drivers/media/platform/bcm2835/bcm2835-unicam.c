@@ -1327,6 +1327,9 @@ static int unicam_enum_input(struct file *file, void *priv,
 	} else if (v4l2_subdev_has_op(dev->sensor, video, querystd)) {
 		inp->capabilities = V4L2_IN_CAP_STD;
 		inp->std = V4L2_STD_ALL;
+	} else {
+		inp->capabilities = 0;
+		inp->std = 0;
 	}
 	sprintf(inp->name, "Camera 0");
 	return 0;
@@ -1424,6 +1427,8 @@ static int unicam_s_dv_timings(struct file *file, void *priv,
 	int ret;
 
 	ret =  v4l2_subdev_call(dev->sensor, video, s_dv_timings, timings);
+	if (ret)
+		return ret;
 
 	return ret;
 }
@@ -1459,6 +1464,32 @@ static int unicam_dv_timings_cap(struct file *file, void *priv,
 	ret =  v4l2_subdev_call(dev->sensor, pad, dv_timings_cap, cap);
 
 	return ret;
+}
+
+static int unicam_subscribe_event(struct v4l2_fh *fh,
+				  const struct v4l2_event_subscription *sub)
+{
+	switch (sub->type) {
+	case V4L2_EVENT_SOURCE_CHANGE:
+		return v4l2_event_subscribe(fh, sub, 4, NULL);
+	}
+
+	return v4l2_ctrl_subscribe_event(fh, sub);
+}
+
+static void unicam_notify(struct v4l2_subdev *sd,
+			  unsigned int notification, void *arg)
+{
+	struct unicam_device *dev =
+		container_of(sd->v4l2_dev, struct unicam_device, v4l2_dev);
+
+	switch (notification) {
+	case V4L2_DEVICE_NOTIFY_EVENT:
+		v4l2_event_queue(&dev->video_dev, arg);
+		break;
+	default:
+		break;
+	}
 }
 
 static const struct vb2_ops unicam_video_qops = {
@@ -1518,7 +1549,7 @@ static const struct v4l2_ioctl_ops unicam_ioctl_ops = {
 	.vidioc_streamoff		= vb2_ioctl_streamoff,
 
 	.vidioc_log_status		= v4l2_ctrl_log_status,
-	.vidioc_subscribe_event		= v4l2_ctrl_subscribe_event,
+	.vidioc_subscribe_event		= unicam_subscribe_event,
 	.vidioc_unsubscribe_event	= v4l2_event_unsubscribe,
 };
 
@@ -1633,6 +1664,10 @@ static int unicam_probe_complete(struct unicam_device *unicam)
 	const struct unicam_fmt *fmt;
 	struct v4l2_mbus_framefmt mbus_fmt;
 	int ret;
+
+	v4l2_set_subdev_hostdata(unicam->sensor, unicam);
+
+	unicam->v4l2_dev.notify = unicam_notify;
 
 	unicam->sensor_config = v4l2_subdev_alloc_pad_config(unicam->sensor);
 	if (!unicam->sensor_config)
