@@ -94,6 +94,10 @@
 	hpd-gpios = <&gpio 46 GPIO_ACTIVE_HIGH>;
 };
 
+&csi1 {
+	max_data_lanes = <4>;
+};
+
 / {
 	__overrides__ {
 		uart0 = <&uart0>,"status";

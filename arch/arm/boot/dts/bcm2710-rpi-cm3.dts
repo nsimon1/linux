@@ -139,6 +139,10 @@
 	pinctrl-0 = <&audio_pins>;
 };
 
+&csi1 {
+	max_data_lanes = <4>;
+};
+
 / {
 	__overrides__ {
 		uart0 = <&uart0>,"status";
