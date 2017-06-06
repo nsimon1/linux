@@ -2597,6 +2597,13 @@ L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/rpi/linux-rpi.git
 S:	Maintained
 N:	bcm2835
+X:  drivers/media/platform/bcm2835/
+
+BROADCOM BCM2835 CAMERA DRIVER
+M:	Dave Stevenson <dave.stevenson@raspberrypi.org>
+L:	linux-media@vger.kernel.org
+S:	Maintained
+F:	drivers/media/platform/bcm2835/
 
 BROADCOM BCM47XX MIPS ARCHITECTURE
 M:	Hauke Mehrtens <hauke@hauke-m.de>
