@@ -39,16 +39,12 @@
 			#size-cells = <0>;
 			status = "okay";
 
-			ports {
+			port {
 				#address-cells = <1>;
 				#size-cells = <0>;
+				endpoint {
+					remote-endpoint = <&adv7282_0>;
 
-				csi2_0: port@0 {
-					reg = <0>;
-					endpoint {
-						remote-endpoint = <&adv7282_0>;
-
-					};
 				};
 			};
 		};

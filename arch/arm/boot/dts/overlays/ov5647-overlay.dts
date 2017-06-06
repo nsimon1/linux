@@ -47,15 +47,11 @@
 			#size-cells = <0>;
 			status = "okay";
 
-			ports {
+			port {
 				#address-cells = <1>;
 				#size-cells = <0>;
-
-				csi1_0: port@0 {
-					reg = <0>;
-					endpoint {
-						remote-endpoint = <&ov5647_0>;
-					};
+				endpoint {
+					remote-endpoint = <&ov5647_0>;
 				};
 			};
 		};

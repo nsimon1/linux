@@ -47,16 +47,11 @@
 			#size-cells = <0>;
 			status = "okay";
 
-			ports {
+			port {
 				#address-cells = <1>;
 				#size-cells = <0>;
-
-				port@0 {
-					reg = <0>;
-					endpoint {
-						remote-endpoint = <&tc358743>;
-
-					};
+				endpoint {
+					remote-endpoint = <&tc358743>;
 				};
 			};
 		};
