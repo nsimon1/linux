@@ -1781,19 +1781,11 @@ static struct device_node *
 of_get_port(const struct device_node *parent)
 {
 	struct device_node *port = NULL;
-	struct device_node *ports;
 
 	if (!parent)
 		return NULL;
 
-	ports = of_get_child_by_name(parent, "ports");
-	if (ports)
-		parent = ports;
-
 	port = of_get_child_by_name(parent, "port");
-
-	/* release the 'ports' node */
-	of_node_put(ports);
 
 	return port;
 }
