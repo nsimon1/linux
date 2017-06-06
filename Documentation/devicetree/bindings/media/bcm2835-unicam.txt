@@ -1,0 +1,76 @@
+Broadcom BCM283x Camera Interface (Unicam)
+------------------------------------------
+
+The Unicam block on BCM283x SoCs is the receiver for either
+CSI-2 or CCP2 data from image sensors or similar devices.
+
+Required properties:
+===================
+- compatible	: must be "brcm,bcm2835-unicam".
+- reg		: physical base address and length of the register sets for the
+		  device.
+- interrupts	: should contain IRQ line for this Unicam instance.
+- clocks	: list of clock specifiers, corresponding to entries in
+		  clock-names property.
+- clock-names	: must contain an "lp_clock" entry, matching entries
+		  in the clocks property.
+
+Optional properties
+===================
+- max-data-lanes: the instances can support varying numbers of clock lanes.
+		  This value is the maximum number supported by this instance.
+		  Expected value of 2 or 4. Default is 2.
+
+
+Unicam supports a single port node. It should contain one 'port' child node
+with child 'endpoint' node. Please refer to the bindings defined in
+Documentation/devicetree/bindings/media/video-interfaces.txt.
+
+Example:
+	csi1: csi@7e801000 {
+		compatible = "brcm,bcm2835-unicam";
+		reg = <0x7e801000 0x800>,
+		      <0x7e802004 0x4>;
+		interrupts = <2 7>;
+		clocks = <&clocks BCM2835_CLOCK_CAM1>;
+		clock-names = "lp_clock";
+
+		port {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			endpoint {
+				remote-endpoint = <&tc358743_0>;
+
+			};
+		};
+	};
+
+	i2c0: i2c@7e205000 {
+
+		tc358743: tc358743@0f {
+			compatible = "toshiba,tc358743";
+			reg = <0x0f>;
+			status = "okay";
+
+			clocks = <&tc358743_clk>;
+			clock-names = "refclk";
+
+			tc358743_clk: bridge-clk {
+				compatible = "fixed-clock";
+				#clock-cells = <0>;
+				clock-frequency = <27000000>;
+			};
+
+			port {
+				tc358743_0: endpoint {
+					remote-endpoint = <&csi1_0>;
+					clock-lanes = <0>;
+					data-lanes = <1 2 3 4>;
+					clock-noncontinuous;
+					link-frequencies =
+						/bits/ 64 <297000000>;
+				};
+			};
+		};
+	};
