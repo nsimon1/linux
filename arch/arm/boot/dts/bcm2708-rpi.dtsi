@@ -158,3 +158,11 @@ sdhost_pins: &sdhost_gpio48 {
 &cpu_thermal {
 	/delete-node/ trips;
 };
+
+&csi0 {
+	power-domains = <&power RPI_POWER_DOMAIN_UNICAM0>;
+};
+
+&csi1 {
+	power-domains = <&power RPI_POWER_DOMAIN_UNICAM1>;
+};
