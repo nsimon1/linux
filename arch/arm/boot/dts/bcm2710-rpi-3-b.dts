@@ -6,6 +6,7 @@
 
 #include "bcm2710.dtsi"
 #include "bcm283x-rpi-smsc9514.dtsi"
+#include "bcm283x-rpi-csi1-2lane.dtsi"
 
 / {
 	model = "Raspberry Pi 3 Model B";
