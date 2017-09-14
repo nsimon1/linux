@@ -24,7 +24,7 @@ struct ev76c560 {
 	s16 red_bal, blue_bal;
 };
 
-static inline struct mt9v011 *to_ev76c560(struct v4l2_subdev *sd)
+static inline struct ev76c560 *to_ev76c560(struct v4l2_subdev *sd)
 {
 	return container_of(sd, struct ev76c560, sd);
 }
@@ -83,7 +83,7 @@ static int ev76c560_set_fmt(struct v4l2_subdev *sd,
 	//struct 76c560 *core = to_76c560(sd);
 
 	/*if (format->pad || fmt->code != MEDIA_BUS_FMT_SGRBG8_1X8)
-	return -EINVAL;
+		return -EINVAL;
 
 	v4l_bound_align_image(&fmt->width, 48, 639, 1,
 	&fmt->height, 32, 480, 1, 0);
@@ -91,15 +91,15 @@ static int ev76c560_set_fmt(struct v4l2_subdev *sd,
 	fmt->colorspace = V4L2_COLORSPACE_SRGB;
 
 	if (format->which == V4L2_SUBDEV_FORMAT_ACTIVE) {
-	core->width = fmt->width;
-	core->height = fmt->height;
+		core->width = fmt->width;
+		core->height = fmt->height;
 
-	set_res(sd);
+		set_res(sd);
 	} else {
-	cfg->try_fmt = *fmt;
-	}
+		cfg->try_fmt = *fmt;
+	}*/
 
-	return 0;*/
+	return 0;
 }
 
 
@@ -112,7 +112,7 @@ static int ev76c560_enum_mbus_code(struct v4l2_subdev *sd,
 	// return -EINVAL;
 	//
 	// code->code = MEDIA_BUS_FMT_SGRBG8_1X8;
-	// return 0;
+	return 0;
 }
 
 
@@ -168,7 +168,7 @@ static int ev76c560_reset(struct v4l2_subdev *sd, u32 val)
 	// set_res(sd);
 	// set_read_mode(sd);
 
-	// return 0;
+	return 0;
 }
 
 static const struct v4l2_subdev_core_ops ev76c560_core_ops = {
@@ -243,7 +243,7 @@ static const struct of_device_id ev76c50_of_match[] = {
 	{ .compatible = "micron,ev76c50" },
 	{ /* sentinel */ },
 };
-MODULE_DEVICE_TABLE(of, ov5647_of_match);
+MODULE_DEVICE_TABLE(of, ev76c50_of_match);
 #endif
 
 static const struct i2c_device_id ev76c560_id[] = {
