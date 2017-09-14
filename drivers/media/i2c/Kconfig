@@ -593,6 +593,12 @@ config VIDEO_OV5647
 	  To compile this driver as a module, choose M here: the
 	  module will be called ov5647.
 
+config VIDEO_EV76C560
+	tristate "EV76C560 sensor support"
+	depends on I2C && VIDEO_V4L2 && VIDEO_V4L2_SUBDEV_API
+	---help---
+	  This is a V4L2 sensor-level driver for OV76C560
+
 config VIDEO_OV7640
 	tristate "OmniVision OV7640 sensor support"
 	depends on I2C && VIDEO_V4L2
