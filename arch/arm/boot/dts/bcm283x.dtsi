@@ -551,7 +551,7 @@
 			      <0x7e802000 0x4>;
 			interrupts = <2 6>;
 			clocks = <&clocks BCM2835_CLOCK_CAM0>;
-			clock-names = "lp_clock";
+			clock-names = "lp";
 			#address-cells = <1>;
 			#size-cells = <0>;
 			#clock-cells = <1>;
@@ -565,7 +565,7 @@
 			      <0x7e802004 0x4>;
 			interrupts = <2 7>;
 			clocks = <&clocks BCM2835_CLOCK_CAM1>;
-			clock-names = "lp_clock";
+			clock-names = "lp";
 			#address-cells = <1>;
 			#size-cells = <0>;
 			#clock-cells = <1>;
