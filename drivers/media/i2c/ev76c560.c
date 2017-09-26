@@ -15,6 +15,7 @@ struct ev76c560 {
 		struct media_pad pad;
 	#endif
 	struct v4l2_ctrl_handler ctrls;
+	struct mutex lock;
 	unsigned width, height;
 	unsigned xtal;
 	unsigned hflip:1;
@@ -191,6 +192,7 @@ static int ev76c560_probe(struct i2c_client *c,
 	printk("ev76c560 probe is by tangyuan===============================================\n");
 	struct ev76c560 *core;
 	struct v4l2_subdev *sd;
+	int ret;
 
 
 	if (!i2c_check_functionality(c->adapter,
@@ -202,8 +204,34 @@ static int ev76c560_probe(struct i2c_client *c,
 		return -ENOMEM;
 
 	sd = &core->sd;
+
+	mutex_init(&core->lock);
+
+	sd = &core->sd;
 	v4l2_i2c_subdev_init(sd, c, &ev76c560_ops);
+	core->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
+
+	core->pad.flags = MEDIA_PAD_FL_SOURCE;
+	sd->entity.function = MEDIA_ENT_F_CAM_SENSOR;
+	ret = media_entity_pads_init(&sd->entity, 1, &core->pad);
+	if (ret < 0)
+		goto mutex_remove;
+
+	//DETECT THE SENSOR
+
+	if (ret < 0)
+		goto error;
+
+	ret = v4l2_async_register_subdev(sd);
+	if (ret < 0)
+		goto error;
+
 	return 0;
+error:
+	media_entity_cleanup(&sd->entity);
+mutex_remove:
+	mutex_destroy(&core->lock);
+	return ret;
 }
 
 static int ev76c560_remove(struct i2c_client *c)
@@ -215,6 +243,8 @@ static int ev76c560_remove(struct i2c_client *c)
 	// "mt9v011.c: removing mt9v011 adapter on address 0x%x\n",
 	// c->addr << 1);
 
+	v4l2_async_unregister_subdev(&core->sd);
+	media_entity_cleanup(&core->sd.entity);
 	v4l2_device_unregister_subdev(sd);
 	//v4l2_ctrl_handler_free(&core->ctrls);
 
