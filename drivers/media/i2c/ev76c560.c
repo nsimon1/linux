@@ -75,47 +75,36 @@ static void ev76c560_write(struct v4l2_subdev *sd, unsigned char addr, u16 value
 
 
 
-static int ev76c560_set_fmt(struct v4l2_subdev *sd,
-	struct v4l2_subdev_pad_config *cfg,
-	struct v4l2_subdev_format *format)
+static int ev76c560_set_get_fmt(struct v4l2_subdev *sd,
+			      struct v4l2_subdev_pad_config *cfg,
+			      struct v4l2_subdev_format *format)
 {
-	//struct v4l2_mbus_framefmt *fmt = &format->format;
-	//struct 76c560 *core = to_76c560(sd);
+	struct v4l2_mbus_framefmt *fmt = &format->format;
 
-	/*if (format->pad || fmt->code != MEDIA_BUS_FMT_SGRBG8_1X8)
+	if (format->pad != 0)
 		return -EINVAL;
 
-	v4l_bound_align_image(&fmt->width, 48, 639, 1,
-	&fmt->height, 32, 480, 1, 0);
-	fmt->field = V4L2_FIELD_NONE;
+	/* Only one format is supported, so return that */
+	memset(fmt, 0, sizeof(*fmt));
+	fmt->code = MEDIA_BUS_FMT_SBGGR8_1X8;
 	fmt->colorspace = V4L2_COLORSPACE_SRGB;
-
-	if (format->which == V4L2_SUBDEV_FORMAT_ACTIVE) {
-		core->width = fmt->width;
-		core->height = fmt->height;
-
-		set_res(sd);
-	} else {
-		cfg->try_fmt = *fmt;
-	}*/
+	fmt->field = V4L2_FIELD_NONE;
+	fmt->width = 640;
+	fmt->height = 480;
 
 	return 0;
 }
-
-
 
 static int ev76c560_enum_mbus_code(struct v4l2_subdev *sd,
 	struct v4l2_subdev_pad_config *cfg,
 	struct v4l2_subdev_mbus_code_enum *code)
 {
-	//if (code->pad || code->index > 0)
-	// return -EINVAL;
-	//
-	// code->code = MEDIA_BUS_FMT_SGRBG8_1X8;
+	if (code->pad || code->index > 0)
+		return -EINVAL;
+	
+	code->code = MEDIA_BUS_FMT_SBGGR8_1X8;
 	return 0;
 }
-
-
 
 static int ev76c560_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *parms)
 {
@@ -186,21 +175,15 @@ static const struct v4l2_subdev_video_ops ev76c560_video_ops = {
 
 static const struct v4l2_subdev_pad_ops ev76c560_pad_ops = {
 	.enum_mbus_code = ev76c560_enum_mbus_code,
-	.set_fmt = ev76c560_set_fmt,
+	.set_fmt = ev76c560_set_get_fmt,
+	.get_fmt = ev76c560_set_get_fmt,
 };
-
-
-
 
 static const struct v4l2_subdev_ops ev76c560_ops = {
 	.core = &ev76c560_core_ops,
 	.video = &ev76c560_video_ops,
 	.pad = &ev76c560_pad_ops,
 };
-
-
-
-
 
 static int ev76c560_probe(struct i2c_client *c,
 	const struct i2c_device_id *id)
@@ -240,7 +223,7 @@ static int ev76c560_remove(struct i2c_client *c)
 
 #if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id ev76c50_of_match[] = {
-	{ .compatible = "micron,ev76c50" },
+	{ .compatible = "micron,ev76c560" },
 	{ /* sentinel */ },
 };
 MODULE_DEVICE_TABLE(of, ev76c50_of_match);
