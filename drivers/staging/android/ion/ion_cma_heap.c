@@ -37,11 +37,13 @@ static int ion_cma_allocate(struct ion_heap *heap, struct ion_buffer *buffer,
 			    unsigned long flags)
 {
 	struct ion_cma_heap *cma_heap = to_cma_heap(heap);
+	/* len should already be page aligned */
+	unsigned long num_pages = len / PAGE_SIZE;
 	struct sg_table *table;
 	struct page *pages;
 	int ret;
 
-	pages = cma_alloc(cma_heap->cma, len, 0, GFP_KERNEL);
+	pages = cma_alloc(cma_heap->cma, num_pages, 0, GFP_KERNEL);
 	if (!pages)
 		return -ENOMEM;
 
@@ -62,7 +64,7 @@ static int ion_cma_allocate(struct ion_heap *heap, struct ion_buffer *buffer,
 free_mem:
 	kfree(table);
 err:
-	cma_release(cma_heap->cma, pages, buffer->size);
+	cma_release(cma_heap->cma, pages, num_pages);
 	return -ENOMEM;
 }
 
@@ -72,7 +74,7 @@ static void ion_cma_free(struct ion_buffer *buffer)
 	struct page *pages = buffer->priv_virt;
 
 	/* release memory */
-	cma_release(cma_heap->cma, pages, buffer->size);
+	cma_release(cma_heap->cma, pages, buffer->size / PAGE_SIZE);
 	/* release sg table */
 	sg_free_table(buffer->sg_table);
 	kfree(buffer->sg_table);
