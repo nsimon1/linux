@@ -1598,8 +1598,31 @@ static int unicam_subscribe_event(struct v4l2_fh *fh,
 static int unicam_log_status(struct file *file, void *fh)
 {
 	struct unicam_device *dev = video_drvdata(file);
+	struct unicam_cfg *cfg = &dev->cfg;
+	char fourcc_str[V4L2_FOURCC_MAX_SIZE];
+	u32 reg;
+
 	/* status for sub devices */
 	v4l2_device_call_all(&dev->v4l2_dev, 0, core, log_status);
+
+	unicam_info(dev, "-----Receiver status-----\n");
+	unicam_info(dev, "V4L2 width/height:   %ux%u\n",
+		    dev->v_fmt.fmt.pix.width, dev->v_fmt.fmt.pix.height);
+	unicam_info(dev, "Mediabus format:     %08x\n", dev->fmt->code);
+	unicam_info(dev, "V4L2 format:         %s\n",
+		    v4l2_fourcc2s(dev->v_fmt.fmt.pix.pixelformat, fourcc_str));
+	reg = reg_read(&dev->cfg, UNICAM_IPIPE);
+	unicam_info(dev, "Unpacking/packing:   %u / %u\n",
+		    get_field(reg, UNICAM_PUM_MASK),
+		    get_field(reg, UNICAM_PPM_MASK));
+	unicam_info(dev, "----Live data----\n");
+	unicam_info(dev, "Programmed stride:   %4u\n",
+		    reg_read(cfg, UNICAM_IBLS));
+	unicam_info(dev, "Detected resolution: %ux%u\n",
+		    reg_read(cfg, UNICAM_IHSTA),
+		    reg_read(cfg, UNICAM_IVSTA));
+	unicam_info(dev, "Write pointer:       %08x\n",
+		    reg_read(cfg, UNICAM_IBWP));
 
 	return 0;
 }
