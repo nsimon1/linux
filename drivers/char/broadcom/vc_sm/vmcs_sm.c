@@ -46,6 +46,7 @@
 
 #include <linux/broadcom/vmcs_sm_ioctl.h>
 #include "vc_sm_knl.h"
+#include <linux/broadcom/vc_sm_cma_ioctl.h>
 
 /* ---- Private Constants and Types --------------------------------------- */
 
