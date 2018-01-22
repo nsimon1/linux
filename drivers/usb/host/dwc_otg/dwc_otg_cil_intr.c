@@ -64,8 +64,8 @@ inline const char *op_state_str(dwc_otg_core_if_t * core_if)
 int32_t dwc_otg_handle_mode_mismatch_intr(dwc_otg_core_if_t * core_if)
 {
 	gintsts_data_t gintsts;
-	DWC_WARN("Mode Mismatch Interrupt: currently in %s mode\n",
-		 dwc_otg_mode(core_if) ? "Host" : "Device");
+	//DWC_WARN("Mode Mismatch Interrupt: currently in %s mode\n",
+	//	 dwc_otg_mode(core_if) ? "Host" : "Device");
 
 	/* Clear interrupt */
 	gintsts.d32 = 0;
