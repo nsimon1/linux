@@ -383,6 +383,23 @@ extern "C" {
 #define NV_FORMAT_MOD_TEGRA_16BX2_BLOCK(v) fourcc_mod_tegra_code(2, v)
 
 /*
+ * Some modifiers take parameters, for example the number of vertical GOBs in
+ * a block. Reserve the lower 32 bits for modifiers, and the next 24 bits for
+ * parameters. Top 8 bits are the vendor code.
+ */
+#define __fourcc_mod_vc4_param_shift 32
+#define __fourcc_mod_vc4_param_bits 24
+#define fourcc_mod_vc4_code(val, params) \
+	fourcc_mod_code(NV, ((((__u64)params) << __fourcc_mod_vc4_param_shift) | val))
+#define mod_from_vc4_mod(m) \
+	((m) & ~(((1ULL << __fourcc_mod_vc4_param_shift) - 1) << __fourcc_mod_vc4_param_bits))
+#define fourcc_mod_vc4_mod(m) \
+	((__u64)m & ((1ULL << __fourcc_mod_vc4_param_shift) - 1))
+#define param_from_vc4_mod(m) \
+	(((__u64)m >> __fourcc_mod_vc4_param_shift) & \
+		((1ULL << __fourcc_mod_vc4_param_bits) - 1))
+
+/*
  * Broadcom VC4 "T" format
  *
  * This is the primary layout that the V3D GPU can texture from (it
@@ -402,6 +419,35 @@ extern "C" {
  *   tiles) or right-to-left (odd rows of 4k tiles).
  */
 #define DRM_FORMAT_MOD_BROADCOM_VC4_T_TILED fourcc_mod_code(BROADCOM, 1)
+
+/*
+ * Broadcom SAND YUV4:2:0 format
+ *
+ * This is the native format that the H264 codec block uses. It is only valid
+ * on DRM_FORMAT_NV21.
+ * The image can be considered to be split into columns, and placing those
+ * columns consecutively into memory.
+ * The width of those columns can be either 32, 64, 128, or 256 pixels, but in
+ * practice only 128 pixel columns are used.
+ *
+ * The pitch between the start of each column is set to optimally switch
+ * between SDRAM banks. This is passed as the number of lines of column width.
+ *
+ * There are two layouts of the luma and chroma planes, either each column has:
+ * - the luma, padding to a multiple of 16 lines, and then the chroma for that
+ *   column
+ * or
+ * - all the columns of luma (with padding to SDRAM page boundaries), followed
+ *   by all columns of chroma using the same column stride as the luma plane.
+ * The second layout is less efficient on memory, however certain hardware
+ * blocks have a limit on the column stride.
+ *
+ */
+#define DRM_FORMAT_MOD_BROADCOM_VC4_SAND128 fourcc_mod_code(BROADCOM, 2)
+
+#define DRM_FORMAT_MOD_BROADCOM_VC4_SAND128_COL_HEIGHT(v) \
+		(fourcc_mod_code(BROADCOM, ((v) << __fourcc_mod_vc4_param_shift)) | \
+				  DRM_FORMAT_MOD_BROADCOM_VC4_SAND128)
 
 #if defined(__cplusplus)
 }
