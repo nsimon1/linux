@@ -271,6 +271,8 @@ static int vc4_drm_bind(struct device *dev)
 
 	drm_mode_config_init(drm);
 
+	vc4_drm_mode_config_init(drm);
+
 	vc4_gem_init(drm);
 
 	ret = component_bind_all(dev, drm);

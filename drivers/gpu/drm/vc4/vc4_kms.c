@@ -236,3 +236,8 @@ int vc4_kms_load(struct drm_device *dev)
 
 	return 0;
 }
+
+void vc4_drm_mode_config_init(struct drm_device *drm)
+{
+	drm->mode_config.allow_fb_modifiers = true;
+}

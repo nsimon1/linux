@@ -617,6 +617,7 @@ int vc4_hvs_debugfs_regs(struct seq_file *m, void *unused);
 
 /* vc4_kms.c */
 int vc4_kms_load(struct drm_device *dev);
+void vc4_drm_mode_config_init(struct drm_device *drm);
 
 /* vc4_plane.c */
 struct drm_plane *vc4_plane_init(struct drm_device *dev,

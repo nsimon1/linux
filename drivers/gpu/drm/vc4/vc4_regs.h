@@ -796,6 +796,7 @@ enum hvs_pixel_format {
 	HVS_PIXEL_FORMAT_YCBCR_YUV420_2PLANE = 9,
 	HVS_PIXEL_FORMAT_YCBCR_YUV422_3PLANE = 10,
 	HVS_PIXEL_FORMAT_YCBCR_YUV422_2PLANE = 11,
+	HVS_PIXEL_FORMAT_YCBCR_YUV420_SAND   = 12,
 };
 
 /* Note: the LSB is the rightmost character shown.  Only valid for
@@ -961,6 +962,10 @@ enum hvs_pixel_format {
 /* PITCH0/1/2 fields for raster. */
 #define SCALER_SRC_PITCH_MASK			VC4_MASK(15, 0)
 #define SCALER_SRC_PITCH_SHIFT			0
+
+/* PITCH0/1/2 fields for tiled (SAND). */
+#define SCALER_TILE_HEIGHT_MASK			VC4_MASK(15, 0)
+#define SCALER_TILE_HEIGHT_SHIFT		0
 
 /* PITCH0 fields for T-tiled. */
 #define SCALER_PITCH0_TILE_WIDTH_L_MASK		VC4_MASK(22, 16)

@@ -525,6 +525,7 @@ static int vc4_plane_mode_set(struct drm_plane *plane,
 	u32 scl0, scl1, pitch0;
 	u32 lbm_size, tiling;
 	unsigned long irqflags;
+	u32 hvs_format = format->hvs;
 	int ret, i;
 
 	ret = vc4_plane_setup_clipping_and_scaling(state);
@@ -564,7 +565,7 @@ static int vc4_plane_mode_set(struct drm_plane *plane,
 		scl1 = vc4_get_scl_field(state, 0);
 	}
 
-	switch (fb->modifier) {
+	switch (mod_from_vc4_mod(fb->modifier)) {
 	case DRM_FORMAT_MOD_LINEAR:
 		tiling = SCALER_CTL0_TILING_LINEAR;
 		pitch0 = VC4_SET_FIELD(fb->pitches[0], SCALER_SRC_PITCH);
@@ -586,7 +587,19 @@ static int vc4_plane_mode_set(struct drm_plane *plane,
 			  VC4_SET_FIELD(tiles_w, SCALER_PITCH0_TILE_WIDTH_R));
 		break;
 	}
-
+	case DRM_FORMAT_MOD_BROADCOM_VC4_SAND128: {
+		/* Column-based NV12.
+		 */
+		if (hvs_format != HVS_PIXEL_FORMAT_YCBCR_YUV420_2PLANE) {
+			DRM_DEBUG_KMS("SAND format only valid for NV12");
+			return -EINVAL;
+		}
+		hvs_format = HVS_PIXEL_FORMAT_YCBCR_YUV420_SAND;
+		tiling = SCALER_CTL0_TILING_128B;
+		pitch0 = VC4_SET_FIELD(param_from_vc4_mod(fb->modifier),
+				       SCALER_TILE_HEIGHT);
+		break;
+	}
 	default:
 		DRM_DEBUG_KMS("Unsupported FB tiling flag 0x%16llx",
 			      (long long)fb->modifier);
@@ -597,7 +610,7 @@ static int vc4_plane_mode_set(struct drm_plane *plane,
 	vc4_dlist_write(vc4_state,
 			SCALER_CTL0_VALID |
 			(format->pixel_order << SCALER_CTL0_ORDER_SHIFT) |
-			(format->hvs << SCALER_CTL0_PIXEL_FORMAT_SHIFT) |
+			(hvs_format << SCALER_CTL0_PIXEL_FORMAT_SHIFT) |
 			VC4_SET_FIELD(tiling, SCALER_CTL0_TILING) |
 			(vc4_state->is_unity ? SCALER_CTL0_UNITY : 0) |
 			VC4_SET_FIELD(scl0, SCALER_CTL0_SCL0) |
@@ -650,8 +663,14 @@ static int vc4_plane_mode_set(struct drm_plane *plane,
 
 	/* Pitch word 1/2 */
 	for (i = 1; i < num_planes; i++) {
-		vc4_dlist_write(vc4_state,
-				VC4_SET_FIELD(fb->pitches[i], SCALER_SRC_PITCH));
+		if (hvs_format != HVS_PIXEL_FORMAT_YCBCR_YUV420_SAND)
+			vc4_dlist_write(vc4_state,
+					VC4_SET_FIELD(fb->pitches[i],
+						      SCALER_SRC_PITCH));
+		else
+			vc4_dlist_write(vc4_state,
+					VC4_SET_FIELD(pitch0,
+						      SCALER_SRC_PITCH));
 	}
 
 	/* Colorspace conversion words */
