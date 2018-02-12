@@ -471,6 +471,24 @@ create_pagelist(char __user *buf, size_t count, unsigned short type,
 			off = 0;
 		}
 		/* do not try and release vmalloc pages */
+	} else if (!task->mm) {
+		/* in a kthread, just map to pages */
+		unsigned long length = count;
+		unsigned int off = offset;
+
+		for (actual_pages = 0; actual_pages < num_pages;
+		     actual_pages++) {
+			struct page *pg = virt_to_page(buf + (actual_pages *
+							      PAGE_SIZE));
+			size_t bytes = PAGE_SIZE - off;
+
+			if (bytes > length)
+				bytes = length;
+			pages[actual_pages] = pg;
+			length -= bytes;
+			off = 0;
+		}
+		/* do not try and release ioremapped pages */
 	} else {
 		down_read(&task->mm->mmap_sem);
 		actual_pages = get_user_pages(
