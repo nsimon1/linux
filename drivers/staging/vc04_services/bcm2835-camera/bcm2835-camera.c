@@ -18,7 +18,6 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
-#include <media/videobuf2-vmalloc.h>
 #include <media/videobuf2-dma-contig.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-ioctl.h>
@@ -274,11 +273,6 @@ static int queue_setup(struct vb2_queue *vq,
 	*nplanes = 1;
 
 	sizes[0] = size;
-
-	/*
-	 * videobuf2-vmalloc allocator is context-less so no need to set
-	 * alloc_ctxs array.
-	 */
 
 	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev, "%s: dev:%p\n",
 		 __func__, dev);
@@ -1927,11 +1921,11 @@ static int bm2835_mmal_probe(struct platform_device *pdev)
 		q = &dev->capture.vb_vidq;
 		memset(q, 0, sizeof(*q));
 		q->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-		q->io_modes = VB2_MMAP | VB2_USERPTR | VB2_READ;
+		q->io_modes = VB2_MMAP | VB2_DMABUF | VB2_USERPTR | VB2_READ;
 		q->drv_priv = dev;
 		q->buf_struct_size = sizeof(struct mmal_buffer);
 		q->ops = &bm2835_mmal_video_qops;
-		q->mem_ops = &vb2_vmalloc_memops;
+		q->mem_ops = &vb2_dma_contig_memops;
 		q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
 		q->dev	= &pdev->dev;
 		ret = vb2_queue_init(q);

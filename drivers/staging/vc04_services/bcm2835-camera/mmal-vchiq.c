@@ -26,7 +26,6 @@
 #include <linux/vmalloc.h>
 #include <linux/btree.h>
 #include <asm/cacheflush.h>
-#include <media/videobuf2-vmalloc.h>
 
 #include "mmal-common.h"
 #include "mmal-vchiq.h"
