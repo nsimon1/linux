@@ -3,7 +3,7 @@ config VIDEO_BCM2835
 	depends on MEDIA_SUPPORT
 	depends on VIDEO_V4L2 && (ARCH_BCM2835 || COMPILE_TEST)
 	select BCM2835_VCHIQ
-	select VIDEOBUF2_VMALLOC
+	select VIDEOBUF2_DMA_CONTIG
 	select BTREE
 	help
 	  Say Y here to enable camera host interface devices for
