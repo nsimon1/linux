@@ -16,6 +16,7 @@
 #include <linux/errno.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <media/videobuf2-vmalloc.h>
 #include <media/videobuf2-dma-contig.h>
@@ -1859,7 +1860,7 @@ static struct v4l2_format default_v4l2_format = {
 	.fmt.pix.sizeimage = 1024 * 768,
 };
 
-static int __init bm2835_mmal_init(void)
+static int bm2835_mmal_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct bm2835_mmal_dev *dev;
@@ -1887,6 +1888,7 @@ static int __init bm2835_mmal_init(void)
 			goto cleanup_gdev;
 		}
 
+		dev->pdev = pdev;
 		dev->camera_num = camera;
 		dev->max_width = resolutions[camera][0];
 		dev->max_height = resolutions[camera][1];
@@ -1931,6 +1933,7 @@ static int __init bm2835_mmal_init(void)
 		q->ops = &bm2835_mmal_video_qops;
 		q->mem_ops = &vb2_vmalloc_memops;
 		q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
+		q->dev	= &pdev->dev;
 		ret = vb2_queue_init(q);
 		if (ret < 0)
 			goto unreg_dev;
@@ -1979,7 +1982,7 @@ cleanup_gdev:
 	return ret;
 }
 
-static void __exit bm2835_mmal_exit(void)
+static int bm2835_mmal_exit(struct platform_device *pdev)
 {
 	int camera;
 	struct vchiq_mmal_instance *instance = gdev[0]->instance;
@@ -1989,7 +1992,29 @@ static void __exit bm2835_mmal_exit(void)
 		gdev[camera] = NULL;
 	}
 	vchiq_mmal_finalise(instance);
+
+	return 0;
 }
 
-module_init(bm2835_mmal_init);
-module_exit(bm2835_mmal_exit);
+/*
+ *   Register the driver with device tree
+ */
+
+static const struct of_device_id bcm2835_v4l2_of_match[] = {
+	{.compatible = "raspberrypi,bcm2835-v4l2",},
+	{ /* sentinel */ },
+};
+
+MODULE_DEVICE_TABLE(of, bcm2835_v4l2_of_match);
+
+static struct platform_driver bcm2835_v4l2_driver = {
+	.probe = bm2835_mmal_probe,
+	.remove = bm2835_mmal_exit,
+	.driver = {
+		   .name = BM2835_MMAL_MODULE_NAME,
+		   .owner = THIS_MODULE,
+		   .of_match_table = bcm2835_v4l2_of_match,
+		   },
+};
+
+module_platform_driver(bcm2835_v4l2_driver);

@@ -37,6 +37,7 @@ enum {
 extern int bcm2835_v4l2_debug;
 
 struct bm2835_mmal_dev {
+	struct platform_device *pdev;
 	/* v4l2 devices */
 	struct v4l2_device     v4l2_dev;
 	struct video_device    vdev;
