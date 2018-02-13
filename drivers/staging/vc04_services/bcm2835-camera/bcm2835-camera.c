@@ -294,6 +294,7 @@ static int buffer_init(struct vb2_buffer *vb)
 	buf->buffer_size = vb2_plane_size(&buf->vb.vb2_buf, 0);
 
 	mmal_vchi_buffer_init(dev->instance, buf);
+
 	return 0;
 }
 
@@ -302,8 +303,8 @@ static int buffer_prepare(struct vb2_buffer *vb)
 	struct bm2835_mmal_dev *dev = vb2_get_drv_priv(vb->vb2_queue);
 	unsigned long size;
 
-	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev, "%s: dev:%p\n",
-		 __func__, dev);
+	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev, "%s: dev:%p, vb %p\n",
+		 __func__, dev, vb);
 
 	BUG_ON(!dev->capture.port);
 	BUG_ON(!dev->capture.fmt);
@@ -523,10 +524,8 @@ static void buffer_queue(struct vb2_buffer *vb)
 	int ret;
 
 	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
-		 "%s: dev:%p buf:%p\n", __func__, dev, buf);
-
-	buf->buffer = vb2_plane_vaddr(&buf->vb.vb2_buf, 0);
-	buf->buffer_size = vb2_plane_size(&buf->vb.vb2_buf, 0);
+		 "%s: dev:%p buf:%p, idx %u\n", __func__, dev, buf,
+		 vb2->vb2_buf.index);
 
 	ret = vchiq_mmal_submit_buffer(dev->instance, dev->capture.port, buf);
 	if (ret < 0)
