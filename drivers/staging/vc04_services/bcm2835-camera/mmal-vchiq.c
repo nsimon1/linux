@@ -313,6 +313,10 @@ static void buffer_work_cb(struct work_struct *work)
 	struct mmal_msg_context *msg_context =
 		container_of(work, struct mmal_msg_context, u.bulk.work);
 
+	pr_err("%s: ctx: %p, buf %p, idx %u\n", __func__, msg_context,
+			msg_context->u.bulk.buffer,
+			msg_context->u.bulk.buffer->vb.vb2_buf.index);
+
 	msg_context->u.bulk.port->buffer_cb(msg_context->u.bulk.instance,
 					    msg_context->u.bulk.port,
 					    msg_context->u.bulk.status,
@@ -338,6 +342,10 @@ static void buffer_to_host_work_cb(struct work_struct *work)
 	struct vchiq_mmal_instance *instance = msg_context->instance;
 	int ret;
 
+	pr_err("%s: ctx: %p, buf %p, idx %u\n", __func__, msg_context,
+			msg_context->u.bulk.buffer,
+			msg_context->u.bulk.buffer->vb.vb2_buf.index);
+
 	/* queue the bulk submission */
 	vchi_service_use(instance->handle);
 	ret = vchi_bulk_queue_receive(instance->handle,
@@ -355,6 +363,10 @@ static void buffer_to_host_work_cb(struct work_struct *work)
 	if (ret != 0)
 		pr_err("%s: ctx: %p, vchi_bulk_queue_receive failed %d\n",
 		       __func__, msg_context, ret);
+
+	pr_err("%s: exit ctx: %p, buf %p, idx %u\n", __func__, msg_context,
+			msg_context->u.bulk.buffer,
+			msg_context->u.bulk.buffer->vb.vb2_buf.index);
 }
 
 /* enqueue a bulk receive for a given message context */
@@ -363,6 +375,8 @@ static int bulk_receive(struct vchiq_mmal_instance *instance,
 			struct mmal_msg_context *msg_context)
 {
 	unsigned long rd_len;
+
+	pr_err("%s: ctx: %p, \n", __func__, msg_context);
 
 	rd_len = msg->u.buffer_from_host.buffer_header.length;
 
@@ -400,6 +414,10 @@ static int bulk_receive(struct vchiq_mmal_instance *instance,
 
 	schedule_work(&msg_context->u.bulk.buffer_to_host_work);
 
+	pr_err("%s: exit ctx: %p, buf %p, idx %u\n", __func__, msg_context,
+			msg_context->u.bulk.buffer,
+			msg_context->u.bulk.buffer->vb.vb2_buf.index);
+
 	return 0;
 }
 
@@ -408,6 +426,8 @@ static int dummy_bulk_receive(struct vchiq_mmal_instance *instance,
 			      struct mmal_msg_context *msg_context)
 {
 	int ret;
+
+	pr_err("%s: ctx: %p, \n", __func__, msg_context);
 
 	/* zero length indicates this was a dummy transfer */
 	msg_context->u.bulk.buffer_used = 0;
@@ -424,6 +444,7 @@ static int dummy_bulk_receive(struct vchiq_mmal_instance *instance,
 
 	vchi_service_release(instance->handle);
 
+	pr_err("%s: exit ctx: %p, \n", __func__, msg_context);
 	return ret;
 }
 
@@ -432,6 +453,8 @@ static int inline_receive(struct vchiq_mmal_instance *instance,
 			  struct mmal_msg *msg,
 			  struct mmal_msg_context *msg_context)
 {
+	pr_err("%s: ctx: %p, \n", __func__, msg_context);
+
 	memcpy(msg_context->u.bulk.buffer->buffer,
 	       msg->u.buffer_from_host.short_data,
 	       msg->u.buffer_from_host.payload_in_message);
@@ -439,6 +462,9 @@ static int inline_receive(struct vchiq_mmal_instance *instance,
 	msg_context->u.bulk.buffer_used =
 	    msg->u.buffer_from_host.payload_in_message;
 
+	pr_err("%s: exit ctx: %p, buf %p, idx %u\n", __func__, msg_context,
+			msg_context->u.bulk.buffer,
+			msg_context->u.bulk.buffer->vb.vb2_buf.index);
 	return 0;
 }
 
@@ -454,7 +480,8 @@ buffer_from_host(struct vchiq_mmal_instance *instance,
 	if (!port->enabled)
 		return -EINVAL;
 
-	pr_debug("instance:%p buffer:%p\n", instance->handle, buf);
+	pr_debug("instance:%p buffer:%p, idx: %u\n", instance->handle, buf,
+		 buf->vb.vb2_buf.index);
 
 	/* get context */
 	if (!buf->msg_context) {
@@ -526,8 +553,8 @@ static void buffer_to_host_cb(struct vchiq_mmal_instance *instance,
 	struct mmal_msg_context *msg_context;
 	u32 handle;
 
-	pr_debug("buffer_to_host_cb: instance:%p msg:%p msg_len:%d\n",
-		 instance, msg, msg_len);
+	pr_err("%s: instance:%p msg:%p msg_len:%d\n",
+	       __func__, instance, msg, msg_len);
 
 	if (msg->u.buffer_from_host.drvbuf.magic == MMAL_MAGIC) {
 		handle = msg->u.buffer_from_host.drvbuf.client_context;
@@ -1445,6 +1472,7 @@ static int port_enable(struct vchiq_mmal_instance *instance,
 			mmalbuf = list_entry(buf_head, struct mmal_buffer,
 					     list);
 			ret = buffer_from_host(instance, port, mmalbuf);
+			pr_err("%s: Sending buf %p failed, ret %d\n", __func__, mmalbuf, ret);
 			if (ret)
 				goto done;
 
