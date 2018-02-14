@@ -48,6 +48,8 @@ struct mmal_buffer {
 
 	void *buffer; /* buffer pointer */
 	unsigned long buffer_size; /* size of allocated buffer */
+
+	void *msg_context;
 };
 
 /* */
