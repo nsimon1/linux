@@ -27,8 +27,18 @@ enum vc_sm_lock_cache_mode {
 	VC_SM_LOCK_NON_CACHED,
 };
 
+/* Request to allocate memory (HOST->VC) */
+struct vc_sm_knl_alloc_t {
+	/* type of memory to allocate */
+	bool cached;
+	/* byte amount of data to allocate per unit */
+	u32 base_unit;
+	/* number of unit to allocate */
+	u32 num_unit;
+};
+
 /* Allocate a shared memory handle and block. */
-int vc_sm_alloc(struct vc_sm_alloc_t *alloc, int *handle);
+int vc_sm_alloc(struct vc_sm_knl_alloc_t *alloc, int *handle);
 
 /* Free a previously allocated shared memory handle and block. */
 int vc_sm_free(int handle);
