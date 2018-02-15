@@ -3368,7 +3368,7 @@ int vc_sm_alloc(struct vc_sm_alloc_t *alloc, int *handle)
 EXPORT_SYMBOL_GPL(vc_sm_alloc);
 
 /* Get an internal resource handle mapped from the external one. */
-int vc_sm_int_handle(int handle)
+uint32_t vc_sm_int_handle(int handle)
 {
 	struct sm_resource_t *resource;
 	int ret = 0;
