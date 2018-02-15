@@ -301,7 +301,10 @@ static int buffer_init(struct vb2_buffer *vb)
 static int buffer_prepare(struct vb2_buffer *vb)
 {
 	struct bm2835_mmal_dev *dev = vb2_get_drv_priv(vb->vb2_queue);
+	struct vb2_v4l2_buffer *vb2 = to_vb2_v4l2_buffer(vb);
+	struct mmal_buffer *buf = container_of(vb2, struct mmal_buffer, vb);
 	unsigned long size;
+	int ret;
 
 	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev, "%s: dev:%p, vb %p\n",
 		 __func__, dev, vb);
@@ -317,7 +320,36 @@ static int buffer_prepare(struct vb2_buffer *vb)
 		return -EINVAL;
 	}
 
-	return 0;
+#if defined(CONFIG_BCM_VC_SM)
+	/*
+	 * Two niggles:
+	 * 1 - We want to do this at init, but vb2_core_expbuf checks that the
+	 * index < q->num_buffers, and q->num_buffers only gets updated once
+	 * all the buffers are allocated.
+	 *
+	 * 2 - videobuf2 only exposes dmabufs as an fd via vb2_core_expbuf.
+	 * Ideally we'd like the struct dma_buf directly, but can't get hold of
+	 * it, so have to accept the fd and work with it.
+	 */
+	if (!buf->dma_buf) {
+		int fd;
+
+		ret = vb2_core_expbuf(vb->vb2_queue, &fd,
+				      vb->vb2_queue->type, vb->index, 0,
+				      O_CLOEXEC);
+		if (ret)
+			v4l2_err(&dev->v4l2_dev, "%s: Failed to expbuf idx %d, ret %d\n",
+				 __func__, vb->index, ret);
+		buf->dma_buf = dma_buf_get(fd);
+		/* Drop the fd's reference to the buffer */
+		dma_buf_put(buf->dma_buf);
+		/* Release the fd as we now have a ref to the dma_buf */
+		put_unused_fd(fd);
+	}
+#else
+	ret = 0;
+#endif
+	return ret;
 }
 
 static void buffer_cleanup(struct vb2_buffer *vb)
@@ -328,7 +360,13 @@ static void buffer_cleanup(struct vb2_buffer *vb)
 
 	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev, "%s: dev:%p, vb %p\n",
 		 __func__, dev, vb);
+
 	mmal_vchi_buffer_cleanup(buf);
+
+#if defined(CONFIG_BCM_VC_SM)
+	if (buf->dma_buf)
+		dma_buf_put(buf->dma_buf);
+#endif
 }
 
 static inline bool is_capturing(struct bm2835_mmal_dev *dev)
@@ -1602,6 +1640,10 @@ static int __init mmal_init(struct bm2835_mmal_dev *dev)
 	u32 supported_encodings[MAX_SUPPORTED_ENCODINGS];
 	int param_size;
 	struct vchiq_mmal_component  *camera;
+#if defined(CONFIG_BCM_VC_SM)
+	unsigned int enable = 1;
+#endif
+
 
 	ret = vchiq_mmal_init(&dev->instance);
 	if (ret < 0)
@@ -1668,6 +1710,14 @@ static int __init mmal_init(struct bm2835_mmal_dev *dev)
 	format->es->video.frame_rate.num = 0; /* Rely on fps_range */
 	format->es->video.frame_rate.den = 1;
 
+#if defined(CONFIG_BCM_VC_SM)
+	vchiq_mmal_port_parameter_set(
+			dev->instance,
+			&camera->output[MMAL_CAMERA_PORT_PREVIEW],
+			MMAL_PARAMETER_ZERO_COPY,
+			&enable, sizeof(enable));
+#endif
+
 	format = &camera->output[MMAL_CAMERA_PORT_VIDEO].format;
 
 	format->encoding = MMAL_ENCODING_OPAQUE;
@@ -1682,6 +1732,14 @@ static int __init mmal_init(struct bm2835_mmal_dev *dev)
 	format->es->video.frame_rate.num = 0; /* Rely on fps_range */
 	format->es->video.frame_rate.den = 1;
 
+#if defined(CONFIG_BCM_VC_SM)
+	vchiq_mmal_port_parameter_set(
+			dev->instance,
+			&camera->output[MMAL_CAMERA_PORT_VIDEO],
+			MMAL_PARAMETER_ZERO_COPY,
+			&enable, sizeof(enable));
+#endif
+
 	format = &camera->output[MMAL_CAMERA_PORT_CAPTURE].format;
 
 	format->encoding = MMAL_ENCODING_OPAQUE;
@@ -1694,6 +1752,14 @@ static int __init mmal_init(struct bm2835_mmal_dev *dev)
 	format->es->video.crop.height = 1944;
 	format->es->video.frame_rate.num = 0; /* Rely on fps_range */
 	format->es->video.frame_rate.den = 1;
+
+#if defined(CONFIG_BCM_VC_SM)
+	vchiq_mmal_port_parameter_set(
+			dev->instance,
+			&camera->output[MMAL_CAMERA_PORT_CAPTURE],
+			MMAL_PARAMETER_ZERO_COPY,
+			&enable, sizeof(enable));
+#endif
 
 	dev->capture.width = format->es->video.width;
 	dev->capture.height = format->es->video.height;
@@ -1732,6 +1798,14 @@ static int __init mmal_init(struct bm2835_mmal_dev *dev)
 		goto unreg_image_encoder;
 	}
 
+#if defined(CONFIG_BCM_VC_SM)
+	vchiq_mmal_port_parameter_set(
+			dev->instance,
+			&dev->component[MMAL_COMPONENT_IMAGE_ENCODE]->output[0],
+			MMAL_PARAMETER_ZERO_COPY,
+			&enable, sizeof(enable));
+#endif
+
 	/* get the video encoder component ready */
 	ret = vchiq_mmal_component_init(dev->instance, "ril.video_encode",
 					&dev->
@@ -1755,9 +1829,15 @@ static int __init mmal_init(struct bm2835_mmal_dev *dev)
 						 encoder_port);
 	}
 
-	{
-		unsigned int enable = 1;
+#if defined(CONFIG_BCM_VC_SM)
+	vchiq_mmal_port_parameter_set(
+			dev->instance,
+			&dev->component[MMAL_COMPONENT_VIDEO_ENCODE]->output[0],
+			MMAL_PARAMETER_ZERO_COPY,
+			&enable, sizeof(enable));
+#endif
 
+	{
 		vchiq_mmal_port_parameter_set(
 			dev->instance,
 			&dev->component[MMAL_COMPONENT_VIDEO_ENCODE]->control,

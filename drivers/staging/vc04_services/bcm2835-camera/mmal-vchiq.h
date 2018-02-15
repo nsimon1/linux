@@ -78,6 +78,8 @@ struct vchiq_mmal_port {
 	vchiq_mmal_buffer_cb buffer_cb;
 	/* callback context */
 	void *cb_ctx;
+
+	bool zero_copy;
 };
 
 struct vchiq_mmal_component {
