@@ -41,7 +41,7 @@ int vc_sm_lock(int handle, enum vc_sm_lock_cache_mode mode,
 int vc_sm_unlock(int handle, int flush, int no_vc_unlock);
 
 /* Get an internal resource handle mapped from the external one. */
-int vc_sm_int_handle(int handle);
+uint32_t vc_sm_int_handle(int handle);
 
 /* Map a shared memory region for use by kernel. */
 int vc_sm_map(int handle, unsigned int sm_addr,
