@@ -3329,7 +3329,7 @@ static int bcm2835_vcsm_remove(struct platform_device *pdev)
 
 #if defined(__KERNEL__)
 /* Allocate a shared memory handle and block. */
-int vc_sm_alloc(struct vc_sm_alloc_t *alloc, int *handle)
+int vc_sm_alloc(struct vc_sm_knl_alloc_t *alloc, int *handle)
 {
 	struct vmcs_sm_ioctl_alloc ioparam = { 0 };
 	int ret;
@@ -3343,8 +3343,7 @@ int vc_sm_alloc(struct vc_sm_alloc_t *alloc, int *handle)
 
 	ioparam.size = alloc->base_unit;
 	ioparam.num = alloc->num_unit;
-	ioparam.cached =
-	    alloc->type == VC_SM_ALLOC_CACHED ? VMCS_SM_CACHE_VC : 0;
+	ioparam.cached = alloc->cached ? VMCS_SM_CACHE_VC : 0;
 
 	ret = vc_sm_ioctl_alloc(sm_state->data_knl, &ioparam);
 
