@@ -8,5 +8,4 @@ obj-$(CONFIG_VIDEO_BCM2835) += bcm2835-v4l2.o
 
 ccflags-y += \
 	-Idrivers/staging/vc04_services \
-	-Idrivers/char/broadcom/vc_sm \
 	-D__VCCOREVER__=0x04000000

@@ -32,8 +32,8 @@
 #include "mmal-vchiq.h"
 #include "mmal-msg.h"
 
-#if defined(CONFIG_BCM_VC_SM)
-#include "vc_sm_knl.h"
+#if defined(CONFIG_BCM_VC_SM_CMA)
+#include "vc-sm-cma/vc_sm_knl.h"
 #endif
 
 #define USE_VCHIQ_ARM
@@ -524,7 +524,7 @@ buffer_from_host(struct vchiq_mmal_instance *instance,
 	/* buffer header */
 	m.u.buffer_from_host.buffer_header.cmd = 0;
 	if (port->zero_copy) {
-#if defined(CONFIG_BCM_VC_SM)
+#if defined(CONFIG_BCM_VC_SM_CMA)
 		m.u.buffer_from_host.buffer_header.data = buf->vc_handle;
 #else
 		pr_warn("%s: port set to zero_copy but no VCSM", __func__);
@@ -1722,27 +1722,25 @@ int vchiq_mmal_submit_buffer(struct vchiq_mmal_instance *instance,
 	unsigned long flags = 0;
 	int ret;
 
-#if defined(CONFIG_BCM_VC_SM)
+#if defined(CONFIG_BCM_VC_SM_CMA)
 	/*
 	 * We really want to do this in mmal_vchi_buffer_init but can't as
 	 * videobuf2 won't let us have the dmabuf there.
 	 */
 	if (port->zero_copy && buffer->dma_buf && !buffer->vcsm_handle) {
-		int ret;
-
-		ret = vc_sm_import_dmabuf(buffer->dma_buf,
-					  &buffer->vcsm_handle);
+		ret = vc_sm_cma_import_dmabuf(buffer->dma_buf,
+					      &buffer->vcsm_handle);
 		if (ret) {
 			pr_err("%s: vc_sm_import_dmabuf_fd failed, ret %d\n",
 			       __func__, ret);
 			return ret;
 		}
 
-		buffer->vc_handle = vc_sm_int_handle(buffer->vcsm_handle);
+		buffer->vc_handle = vc_sm_cma_int_handle(buffer->vcsm_handle);
 		if (!buffer->vc_handle) {
 			pr_err("%s: vc_sm_int_handle failed %d\n",
 			       __func__, ret);
-			vc_sm_free(buffer->vcsm_handle);
+			vc_sm_cma_free(buffer->vcsm_handle);
 			return ret;
 		}
 	}
@@ -1781,11 +1779,15 @@ int mmal_vchi_buffer_cleanup(struct mmal_buffer *buf)
 		release_msg_context(msg_context);
 	buf->msg_context = NULL;
 
-#if defined(CONFIG_BCM_VC_SM)
+#if defined(CONFIG_BCM_VC_SM_CMA)
+	pr_err("%s: vcsm_handle %d\n",
+	       __func__, buf->vcsm_handle);
 	if (buf->vcsm_handle) {
 		int ret;
 
-		ret = vc_sm_free(buf->vcsm_handle);
+		pr_err("%s: vc_sm_cma_free on handle %d\n", __func__,
+		       buf->vcsm_handle);
+		ret = vc_sm_cma_free(buf->vcsm_handle);
 		if (ret)
 			pr_err("%s: vcsm_free failed, ret %d\n", __func__, ret);
 	}

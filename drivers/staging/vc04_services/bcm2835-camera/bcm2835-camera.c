@@ -18,6 +18,7 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/syscalls.h>
 #include <media/videobuf2-dma-contig.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-ioctl.h>
@@ -320,7 +321,7 @@ static int buffer_prepare(struct vb2_buffer *vb)
 		return -EINVAL;
 	}
 
-#if defined(CONFIG_BCM_VC_SM)
+#if defined(CONFIG_BCM_VC_SM_CMA)
 	/*
 	 * Two niggles:
 	 * 1 - We want to do this at init, but vb2_core_expbuf checks that the
@@ -341,10 +342,13 @@ static int buffer_prepare(struct vb2_buffer *vb)
 			v4l2_err(&dev->v4l2_dev, "%s: Failed to expbuf idx %d, ret %d\n",
 				 __func__, vb->index, ret);
 		buf->dma_buf = dma_buf_get(fd);
-		/* Drop the fd's reference to the buffer */
-		dma_buf_put(buf->dma_buf);
-		/* Release the fd as we now have a ref to the dma_buf */
-		put_unused_fd(fd);
+		v4l2_err(&dev->v4l2_dev, "%s: Given dma_buf fd %d, %p\n",
+			 __func__, fd, buf->dma_buf);
+		/*
+		 * Release the fd (and the associated refcount) as we now have
+		 * a ref to the dma_buf
+		 */
+		sys_close(fd);
 	}
 #else
 	ret = 0;
@@ -363,7 +367,7 @@ static void buffer_cleanup(struct vb2_buffer *vb)
 
 	mmal_vchi_buffer_cleanup(buf);
 
-#if defined(CONFIG_BCM_VC_SM)
+#if defined(CONFIG_BCM_VC_SM_CMA)
 	if (buf->dma_buf)
 		dma_buf_put(buf->dma_buf);
 #endif
@@ -1640,7 +1644,7 @@ static int __init mmal_init(struct bm2835_mmal_dev *dev)
 	u32 supported_encodings[MAX_SUPPORTED_ENCODINGS];
 	int param_size;
 	struct vchiq_mmal_component  *camera;
-#if defined(CONFIG_BCM_VC_SM)
+#if defined(CONFIG_BCM_VC_SM_CMA)
 	unsigned int enable = 1;
 #endif
 
@@ -1710,7 +1714,7 @@ static int __init mmal_init(struct bm2835_mmal_dev *dev)
 	format->es->video.frame_rate.num = 0; /* Rely on fps_range */
 	format->es->video.frame_rate.den = 1;
 
-#if defined(CONFIG_BCM_VC_SM)
+#if defined(CONFIG_BCM_VC_SM_CMA)
 	vchiq_mmal_port_parameter_set(
 			dev->instance,
 			&camera->output[MMAL_CAMERA_PORT_PREVIEW],
@@ -1732,7 +1736,7 @@ static int __init mmal_init(struct bm2835_mmal_dev *dev)
 	format->es->video.frame_rate.num = 0; /* Rely on fps_range */
 	format->es->video.frame_rate.den = 1;
 
-#if defined(CONFIG_BCM_VC_SM)
+#if defined(CONFIG_BCM_VC_SM_CMA)
 	vchiq_mmal_port_parameter_set(
 			dev->instance,
 			&camera->output[MMAL_CAMERA_PORT_VIDEO],
@@ -1753,7 +1757,7 @@ static int __init mmal_init(struct bm2835_mmal_dev *dev)
 	format->es->video.frame_rate.num = 0; /* Rely on fps_range */
 	format->es->video.frame_rate.den = 1;
 
-#if defined(CONFIG_BCM_VC_SM)
+#if defined(CONFIG_BCM_VC_SM_CMA)
 	vchiq_mmal_port_parameter_set(
 			dev->instance,
 			&camera->output[MMAL_CAMERA_PORT_CAPTURE],
@@ -1798,7 +1802,7 @@ static int __init mmal_init(struct bm2835_mmal_dev *dev)
 		goto unreg_image_encoder;
 	}
 
-#if defined(CONFIG_BCM_VC_SM)
+#if defined(CONFIG_BCM_VC_SM_CMA)
 	vchiq_mmal_port_parameter_set(
 			dev->instance,
 			&dev->component[MMAL_COMPONENT_IMAGE_ENCODE]->output[0],
@@ -1829,7 +1833,7 @@ static int __init mmal_init(struct bm2835_mmal_dev *dev)
 						 encoder_port);
 	}
 
-#if defined(CONFIG_BCM_VC_SM)
+#if defined(CONFIG_BCM_VC_SM_CMA)
 	vchiq_mmal_port_parameter_set(
 			dev->instance,
 			&dev->component[MMAL_COMPONENT_VIDEO_ENCODE]->output[0],
