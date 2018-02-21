@@ -382,7 +382,7 @@ static int bulk_receive(struct vchiq_mmal_instance *instance,
 {
 	unsigned long rd_len;
 
-	pr_err("%s: ctx: %p, \n", __func__, msg_context);
+	pr_err("%s: ctx: %p,\n", __func__, msg_context);
 
 	rd_len = msg->u.buffer_from_host.buffer_header.length;
 
@@ -433,7 +433,7 @@ static int dummy_bulk_receive(struct vchiq_mmal_instance *instance,
 {
 	int ret;
 
-	pr_err("%s: ctx: %p, \n", __func__, msg_context);
+	pr_err("%s: ctx: %p,\n", __func__, msg_context);
 
 	/* zero length indicates this was a dummy transfer */
 	msg_context->u.bulk.buffer_used = 0;
@@ -450,7 +450,7 @@ static int dummy_bulk_receive(struct vchiq_mmal_instance *instance,
 
 	vchi_service_release(instance->handle);
 
-	pr_err("%s: exit ctx: %p, \n", __func__, msg_context);
+	pr_err("%s: exit ctx: %p,\n", __func__, msg_context);
 	return ret;
 }
 
@@ -459,7 +459,7 @@ static int inline_receive(struct vchiq_mmal_instance *instance,
 			  struct mmal_msg *msg,
 			  struct mmal_msg_context *msg_context)
 {
-	pr_err("%s: ctx: %p, \n", __func__, msg_context);
+	pr_err("%s: ctx: %p,\n", __func__, msg_context);
 
 	memcpy(msg_context->u.bulk.buffer->buffer,
 	       msg->u.buffer_from_host.short_data,
