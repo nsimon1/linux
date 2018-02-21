@@ -320,7 +320,7 @@ static void buffer_work_cb(struct work_struct *work)
 		container_of(work, struct mmal_msg_context, u.bulk.work);
 
 	pr_err("%s: ctx: %p, buf %p, idx %u\n", __func__, msg_context,
-			msg_context->u.bulk.buffer,
+	       msg_context->u.bulk.buffer,
 			msg_context->u.bulk.buffer->vb.vb2_buf.index);
 
 	msg_context->u.bulk.port->buffer_cb(msg_context->u.bulk.instance,
@@ -349,7 +349,7 @@ static void buffer_to_host_work_cb(struct work_struct *work)
 	int ret;
 
 	pr_err("%s: ctx: %p, buf %p, idx %u\n", __func__, msg_context,
-			msg_context->u.bulk.buffer,
+	       msg_context->u.bulk.buffer,
 			msg_context->u.bulk.buffer->vb.vb2_buf.index);
 
 	/* queue the bulk submission */
@@ -371,7 +371,7 @@ static void buffer_to_host_work_cb(struct work_struct *work)
 		       __func__, msg_context, ret);
 
 	pr_err("%s: exit ctx: %p, buf %p, idx %u\n", __func__, msg_context,
-			msg_context->u.bulk.buffer,
+	       msg_context->u.bulk.buffer,
 			msg_context->u.bulk.buffer->vb.vb2_buf.index);
 }
 
@@ -421,7 +421,7 @@ static int bulk_receive(struct vchiq_mmal_instance *instance,
 	schedule_work(&msg_context->u.bulk.buffer_to_host_work);
 
 	pr_err("%s: exit ctx: %p, buf %p, idx %u\n", __func__, msg_context,
-			msg_context->u.bulk.buffer,
+	       msg_context->u.bulk.buffer,
 			msg_context->u.bulk.buffer->vb.vb2_buf.index);
 
 	return 0;
@@ -469,7 +469,7 @@ static int inline_receive(struct vchiq_mmal_instance *instance,
 	    msg->u.buffer_from_host.payload_in_message;
 
 	pr_err("%s: exit ctx: %p, buf %p, idx %u\n", __func__, msg_context,
-			msg_context->u.bulk.buffer,
+	       msg_context->u.bulk.buffer,
 			msg_context->u.bulk.buffer->vb.vb2_buf.index);
 	return 0;
 }
@@ -786,7 +786,7 @@ static int send_synchronous_mmal_msg(struct vchiq_mmal_instance *instance,
 	if (payload_len >
 	    (MMAL_MSG_MAX_SIZE - sizeof(struct mmal_msg_header))) {
 		pr_err("payload length %d exceeds max:%d\n", payload_len,
-		      (int)(MMAL_MSG_MAX_SIZE -
+		       (int)(MMAL_MSG_MAX_SIZE -
 			    sizeof(struct mmal_msg_header)));
 		return -EINVAL;
 	}

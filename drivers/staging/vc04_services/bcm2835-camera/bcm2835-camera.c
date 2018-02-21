@@ -71,7 +71,7 @@ MODULE_PARM_DESC(max_video_height, "Threshold for video mode");
 static int always_remove_padding;
 module_param(always_remove_padding, int, 0644);
 MODULE_PARM_DESC(always_remove_padding,
-	"Always remove all padding from the image (for apps that ignore bytesperline)");
+		 "Always remove all padding from the image (for apps that ignore bytesperline)");
 
 /* global device data array */
 static struct bm2835_mmal_dev *gdev[MAX_BCM2835_CAMERAS];
@@ -424,7 +424,7 @@ static void buffer_cb(struct vchiq_mmal_instance *instance,
 	if (dev->capture.vc_start_timestamp == -1) {
 		buf->vb.vb2_buf.timestamp = ktime_get_ns();
 		v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
-		 "Buffer time set as current time - %lld",
+			 "Buffer time set as current time - %lld",
 		 buf->vb.vb2_buf.timestamp);
 	} else if (pts != 0) {
 		s64 runtime_us = pts -
@@ -440,13 +440,13 @@ static void buffer_cb(struct vchiq_mmal_instance *instance,
 		if (dev->capture.last_timestamp) {
 			buf->vb.vb2_buf.timestamp = dev->capture.last_timestamp;
 			v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
-			 "Buffer time set as last timestamp - %lld",
+				 "Buffer time set as last timestamp - %lld",
 			 buf->vb.vb2_buf.timestamp);
 		} else {
 			buf->vb.vb2_buf.timestamp =
 			dev->capture.kernel_start_timestamp;
 			v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
-			 "Buffer time set as start timestamp - %lld",
+				 "Buffer time set as start timestamp - %lld",
 			 buf->vb.vb2_buf.timestamp);
 		}
 	}
@@ -457,7 +457,7 @@ static void buffer_cb(struct vchiq_mmal_instance *instance,
 		buf->vb.flags |= V4L2_BUF_FLAG_KEYFRAME;
 
 	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
-		"Buffer has ts %llu",
+		 "Buffer has ts %llu",
 		dev->capture.last_timestamp);
 	vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
 
@@ -627,7 +627,7 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 	    vchiq_mmal_port_enable(dev->instance, dev->capture.port, buffer_cb);
 	if (ret) {
 		v4l2_err(&dev->v4l2_dev,
-			"Failed to enable capture port - error %d. Disabling camera port again\n",
+			 "Failed to enable capture port - error %d. Disabling camera port again\n",
 			ret);
 
 		vchiq_mmal_port_disable(dev->instance,
@@ -1035,7 +1035,8 @@ static int vidioc_try_fmt_vid_cap(struct file *file, void *priv,
 		f->fmt.pix.bytesperline =
 			(f->fmt.pix.bytesperline + align_mask) & ~align_mask;
 		v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
-			"Not removing padding, so bytes/line = %d, (align_mask %d)\n", f->fmt.pix.bytesperline, align_mask);
+			 "Not removing padding, so bytes/line = %d, (align_mask %d)\n",
+			 f->fmt.pix.bytesperline, align_mask);
 	}
 
 	/* Image buffer has to be padded to allow for alignment, even though
@@ -1139,7 +1140,7 @@ static int mmal_setup_components(struct bm2835_mmal_dev *dev,
 
 	remove_padding = mfmt->remove_padding || always_remove_padding;
 	vchiq_mmal_port_parameter_set(dev->instance,
-		camera_port,
+				      camera_port,
 		MMAL_PARAMETER_NO_IMAGE_PADDING,
 		&remove_padding, sizeof(remove_padding));
 
@@ -1380,7 +1381,7 @@ static int vidioc_s_fmt_vid_cap(struct file *file, void *priv,
 }
 
 static int vidioc_enum_framesizes(struct file *file, void *fh,
-			   struct v4l2_frmsizeenum *fsize)
+				  struct v4l2_frmsizeenum *fsize)
 {
 	struct bm2835_mmal_dev *dev = video_drvdata(file);
 	static const struct v4l2_frmsize_stepwise sizes = {
