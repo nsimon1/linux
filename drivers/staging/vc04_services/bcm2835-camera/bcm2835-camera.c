@@ -429,7 +429,7 @@ static void buffer_cb(struct vchiq_mmal_instance *instance,
 		v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
 		 "Buffer time set as current time - %lld",
 		 buf->vb.vb2_buf.timestamp);
-	} else if(pts != 0) {
+	} else if (pts != 0) {
 		s64 runtime_us = pts -
 		    dev->capture.vc_start_timestamp;
 		buf->vb.vb2_buf.timestamp = (runtime_us * NSEC_PER_USEC) +
@@ -1040,7 +1040,7 @@ static int vidioc_try_fmt_vid_cap(struct file *file, void *priv,
 		int align_mask = ((32 * mfmt->depth) >> 3) - 1;
 		/* GPU isn't removing padding, so stride is aligned to 32 */
 		f->fmt.pix.bytesperline =
-			(f->fmt.pix.bytesperline + align_mask)&~align_mask;
+			(f->fmt.pix.bytesperline + align_mask) & ~align_mask;
 		v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
 			"Not removing padding, so bytes/line = %d, (align_mask %d)\n", f->fmt.pix.bytesperline, align_mask);
 	}
