@@ -1624,7 +1624,6 @@ static int __init mmal_init(struct bm2835_mmal_dev *dev)
 	unsigned int enable = 1;
 #endif
 
-
 	ret = vchiq_mmal_init(&dev->instance);
 	if (ret < 0)
 		return ret;
