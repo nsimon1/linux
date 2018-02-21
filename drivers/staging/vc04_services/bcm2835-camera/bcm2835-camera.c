@@ -69,7 +69,7 @@ module_param(max_video_height, int, 0644);
 MODULE_PARM_DESC(max_video_height, "Threshold for video mode");
 
 static int always_remove_padding;
-module_param(always_remove_padding, int, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+module_param(always_remove_padding, int, 0644);
 MODULE_PARM_DESC(always_remove_padding,
 	"Always remove all padding from the image (for apps that ignore bytesperline)");
 
