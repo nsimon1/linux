@@ -442,8 +442,7 @@ static void buffer_cb(struct vchiq_mmal_instance *instance,
 			v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
 			 "Buffer time set as last timestamp - %lld",
 			 buf->vb.vb2_buf.timestamp);
-		}
-		else {
+		} else {
 			buf->vb.vb2_buf.timestamp =
 			dev->capture.kernel_start_timestamp;
 			v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
@@ -612,10 +611,11 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 
 		/* Flag to indicate just to rely on kernel timestamps */
 		dev->capture.vc_start_timestamp = -1;
-	} else
+	} else {
 		v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
 			 "Start time %lld size %d\n",
 			 dev->capture.vc_start_timestamp, parameter_size);
+	}
 
 	dev->capture.last_timestamp = 0;
 
