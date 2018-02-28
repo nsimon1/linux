@@ -1,0 +1,22 @@
+/*
+ * Device tree overlay for V4L2 codec overlay
+ *
+ */
+
+/dts-v1/;
+/plugin/;
+
+/{
+	compatible = "brcm,bcm2708";
+
+	fragment@0 {
+		target = <&soc>;
+		__overlay__ {
+			v4l2: v4l2 {
+				compatible = "raspberrypi,bcm2835-v4l2-encoder";
+				status = "okay";
+			};
+		};
+	};
+
+};
