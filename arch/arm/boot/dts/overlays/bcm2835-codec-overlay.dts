@@ -12,8 +12,12 @@
 	fragment@0 {
 		target = <&soc>;
 		__overlay__ {
-			v4l2: v4l2 {
+			v4l2_encode: v4l2_encode {
 				compatible = "raspberrypi,bcm2835-v4l2-encoder";
+				status = "okay";
+			};
+			v4l2_decode: v4l2_decode {
+				compatible = "raspberrypi,bcm2835-v4l2-decoder";
 				status = "okay";
 			};
 		};
