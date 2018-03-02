@@ -56,6 +56,7 @@ MODULE_PARM_DESC(debug, "activates debug info");
 #define MAX_W 1920
 #define MAX_H 1088
 #define DIM_ALIGN_MASK 7 /* 8-byte alignment for line length */
+#define DEFAULT_COMPRESSED_BUF_SIZE	(256 << 10)
 
 /* Flags that indicate a format can be used for capture/output */
 #define MEM2MEM_CAPTURE	(1 << 0)
@@ -330,8 +331,8 @@ static void ip_buffer_cb(struct vchiq_mmal_instance *instance,
 	struct m2m_mmal_buffer *buf =
 			container_of(mmal_buf, struct m2m_mmal_buffer, mmal);
 
-	v4l2_err(&ctx->dev->v4l2_dev, "%s: length %lu, flags %x\n", __func__,
-		 mmal_buf->length, mmal_buf->mmal_flags);
+	v4l2_err(&ctx->dev->v4l2_dev, "%s: port %p buf %p length %lu, flags %x\n",
+		 __func__, port, mmal_buf, mmal_buf->length, mmal_buf->mmal_flags);
 
 	if (status != 0) {
 		/* error in transfer */
@@ -350,7 +351,8 @@ static void ip_buffer_cb(struct vchiq_mmal_instance *instance,
 	vb2_buffer_done(&buf->m2m.vb.vb2_buf, VB2_BUF_STATE_DONE);
 
 	ctx->num_ip_buffers++;
-	v4l2_err(&ctx->dev->v4l2_dev, "%s: done\n", __func__);
+	v4l2_err(&ctx->dev->v4l2_dev, "%s: done %d input buffers\n", __func__,
+			ctx->num_ip_buffers);
 }
 
 static void op_buffer_cb(struct vchiq_mmal_instance *instance,
@@ -408,6 +410,9 @@ static void op_buffer_cb(struct vchiq_mmal_instance *instance,
 
 	vb2_buffer_done(&mmal_buf->vb2->vb2_buf, VB2_BUF_STATE_DONE);
 	ctx->num_op_buffers++;
+
+	v4l2_err(&ctx->dev->v4l2_dev, "%s: done %d output buffers\n", __func__,
+			ctx->num_op_buffers);
 }
 
 /* vb2_to_mmal_buffer() - converts vb2 buffer header to MMAL
@@ -582,14 +587,23 @@ static int vidioc_try_fmt(struct v4l2_format *f, struct bcm2835_codec_fmt *fmt)
 		f->fmt.pix.width = MAX_W;
 
 	f->fmt.pix.width &= ~DIM_ALIGN_MASK;
-	if (!fmt->flags & V4L2_FMT_FLAG_COMPRESSED)
+	if (!fmt->flags & V4L2_FMT_FLAG_COMPRESSED) {
 		f->fmt.pix.bytesperline =
 				ALIGN((f->fmt.pix.width * fmt->depth) >> 3,
 				      fmt->bytesperline_align);
-	else
+		f->fmt.pix.sizeimage = f->fmt.pix.height * f->fmt.pix.bytesperline;
+	} else {
 		f->fmt.pix.bytesperline = 0;
-	f->fmt.pix.sizeimage = f->fmt.pix.height * f->fmt.pix.bytesperline;
+		f->fmt.pix.sizeimage = DEFAULT_COMPRESSED_BUF_SIZE;
+	}
+
 	f->fmt.pix.field = V4L2_FIELD_NONE;
+	pr_err("%s: fmt %08X, size %dx%d, bpl %d, size %d\n", __func__,
+		f->fmt.pix.pixelformat,
+		f->fmt.pix.width,
+		f->fmt.pix.height,
+		f->fmt.pix.bytesperline,
+		f->fmt.pix.sizeimage);
 
 	return 0;
 }
@@ -658,10 +672,17 @@ static int vidioc_s_fmt(struct bcm2835_codec_ctx *ctx, struct v4l2_format *f)
 		return -EBUSY;
 	}
 
-	q_data->fmt		= find_format(f, ctx->dev->decode,
-					      f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE);
-	q_data->width		= f->fmt.pix.width;
-	q_data->height		= f->fmt.pix.height;
+	q_data->fmt	= find_format(f, ctx->dev->decode,
+				      f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE);
+	q_data->width	= f->fmt.pix.width;
+	q_data->height	= f->fmt.pix.height;
+
+	if (!q_data->fmt->flags & V4L2_FMT_FLAG_COMPRESSED)
+		f->fmt.pix.bytesperline =
+				ALIGN((f->fmt.pix.width * q_data->fmt->depth) >> 3,
+				      q_data->fmt->bytesperline_align);
+	else
+		f->fmt.pix.bytesperline = 0;
 
 	setup_mmal_port_format(q_data, port);
 
@@ -669,12 +690,17 @@ static int vidioc_s_fmt(struct bcm2835_codec_ctx *ctx, struct v4l2_format *f)
 	if (ret)
 		v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed vchiq_mmal_port_set_format on port, ret %d\n",
 			 __func__, ret);
-	q_data->sizeimage	= port->minimum_buffer.size;
+
+	if (q_data->fmt->flags & V4L2_FMT_FLAG_COMPRESSED)
+		q_data->sizeimage = DEFAULT_COMPRESSED_BUF_SIZE;
+	else
+		q_data->sizeimage = port->recommended_buffer.size;
 
 
 	dprintk(ctx->dev,
-		"Setting format for type %d, wxh: %dx%d, fmt: %d\n",
-		f->type, q_data->width, q_data->height, q_data->fmt->fourcc);
+		"Setting format for type %d, wxh: %dx%d, fmt: %d, size %u\n",
+		f->type, q_data->width, q_data->height, q_data->fmt->fourcc,
+		q_data->sizeimage);
 
 	return 0;
 }
@@ -832,7 +858,7 @@ static int bcm2835_codec_queue_setup(struct vb2_queue *vq,
 	q_data = get_q_data(ctx, vq->type);
 	port = get_port_data(ctx, vq->type);
 
-	size = port->minimum_buffer.size;
+	size = q_data->sizeimage;
 
 	if (*nplanes)
 		return sizes[0] < size ? -EINVAL : 0;
@@ -1108,8 +1134,12 @@ static int bcm2835_codec_open(struct file *file)
 #endif
 	int rc = 0;
 
-	if (mutex_lock_interruptible(&dev->dev_mutex))
+	v4l2_err(&dev->v4l2_dev, "Creating instance for %s\n",
+		dev->decode ? "decode" : "encode");
+	if (mutex_lock_interruptible(&dev->dev_mutex)) {
+		v4l2_err(&dev->v4l2_dev, "Mutex fail\n");
 		return -ERESTARTSYS;
+	}
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx) {
 		rc = -ENOMEM;
@@ -1157,15 +1187,33 @@ static int bcm2835_codec_open(struct file *file)
 					 &ctx->component->input[0]);
 	if (rc < 0)
 		goto destroy_component;
-	ctx->q_data[V4L2_M2M_SRC].sizeimage =
-		ctx->component->input[0].minimum_buffer.size;
 
 	rc = vchiq_mmal_port_set_format(dev->instance,
 					 &ctx->component->output[0]);
 	if (rc < 0)
 		goto destroy_component;
-	ctx->q_data[V4L2_M2M_DST].sizeimage =
-		ctx->component->output[0].minimum_buffer.size;
+
+	if (dev->decode) {
+		ctx->q_data[V4L2_M2M_SRC].sizeimage = DEFAULT_COMPRESSED_BUF_SIZE;
+		ctx->q_data[V4L2_M2M_SRC].bytesperline = 0;
+
+		ctx->q_data[V4L2_M2M_DST].sizeimage =
+			ctx->component->output[0].minimum_buffer.size;
+		ctx->q_data[V4L2_M2M_DST].bytesperline =
+				ALIGN((ctx->q_data[V4L2_M2M_DST].width * ctx->q_data[V4L2_M2M_DST].fmt->depth) >> 3,
+				      ctx->q_data[V4L2_M2M_DST].fmt->bytesperline_align);
+	} else {
+		ctx->q_data[V4L2_M2M_SRC].bytesperline =
+				ALIGN((ctx->q_data[V4L2_M2M_SRC].width * ctx->q_data[V4L2_M2M_SRC].fmt->depth) >> 3,
+				      ctx->q_data[V4L2_M2M_SRC].fmt->bytesperline_align);
+		ctx->q_data[V4L2_M2M_SRC].sizeimage =
+			ctx->component->output[0].minimum_buffer.size;
+
+		ctx->q_data[V4L2_M2M_DST].sizeimage =
+					DEFAULT_COMPRESSED_BUF_SIZE;
+		ctx->q_data[V4L2_M2M_DST].bytesperline = 0;
+	}
+
 
 	/* Initialise V4L2 contexts */
 	v4l2_fh_init(&ctx->fh, video_devdata(file));
