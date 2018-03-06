@@ -57,8 +57,9 @@ struct mmal_buffer {
 	u32 vc_handle;		/* VC handle to that dmabuf */
 #endif
 
-	struct vb2_v4l2_buffer *vb2;
+//	struct vb2_v4l2_buffer *vb2;
 
+	u32 cmd;		/* MMAL command. 0=data. */
 	unsigned long length;
 	u32 mmal_flags;
 	s64 dts;

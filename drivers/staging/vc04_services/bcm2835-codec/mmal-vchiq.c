@@ -114,6 +114,9 @@ static const char *const port_action_type_names[] = {
 #define DBG_DUMP_MSG(MSG, MSG_LEN, TITLE)
 #endif
 
+//#undef pr_debug
+//#define pr_debug pr_err
+
 struct vchiq_mmal_instance;
 
 /* normal message context */
@@ -140,6 +143,8 @@ struct mmal_msg_context {
 			/* Presentation and Decode timestamps */
 			s64 pts;
 			s64 dts;
+			/* MMAL buffer command flag */
+			u32 cmd;
 
 			int status;	/* context status */
 
@@ -295,18 +300,6 @@ release_msg_context(struct mmal_msg_context *msg_context)
 	kfree(msg_context);
 }
 
-/* deals with receipt of event to host message */
-static void event_to_host_cb(struct vchiq_mmal_instance *instance,
-			     struct mmal_msg *msg, u32 msg_len)
-{
-	pr_debug("unhandled event\n");
-	pr_debug("component:%u port type:%d num:%d cmd:0x%x length:%d\n",
-		 msg->u.event_to_host.client_component,
-		 msg->u.event_to_host.port_type,
-		 msg->u.event_to_host.port_num,
-		 msg->u.event_to_host.cmd, msg->u.event_to_host.length);
-}
-
 /* workqueue scheduled callback
  *
  * we do this because it is important we do not call any other vchiq
@@ -318,19 +311,30 @@ static void buffer_work_cb(struct work_struct *work)
 		container_of(work, struct mmal_msg_context, u.bulk.work);
 	struct mmal_buffer *buffer = msg_context->u.bulk.buffer;
 
-	pr_err("%s: ctx: %p, buf %p, idx %u\n", __func__, msg_context,
-	       msg_context->u.bulk.buffer,
-			msg_context->u.bulk.buffer->vb2->vb2_buf.index);
+	pr_err("%s: ctx: %p, buf %p\n", __func__, msg_context,
+	       msg_context->u.bulk.buffer);
+	if (!msg_context->u.bulk.buffer) {
+		pr_err("%s: ctx: %p, No mmal buffer to pass details in\n",
+		       __func__, msg_context);
+		return;
+	}
 
 	buffer->length = msg_context->u.bulk.buffer_used;
 	buffer->mmal_flags = msg_context->u.bulk.mmal_flags;
 	buffer->dts = msg_context->u.bulk.dts;
 	buffer->pts = msg_context->u.bulk.pts;
+	buffer->cmd = msg_context->u.bulk.cmd;
+
+	if (!buffer->cmd)
+		atomic_dec(&msg_context->u.bulk.port->buffers_with_vpu);
 
 	msg_context->u.bulk.port->buffer_cb(msg_context->u.bulk.instance,
 					    msg_context->u.bulk.port,
 					    msg_context->u.bulk.status,
 					    msg_context->u.bulk.buffer);
+
+	if (buffer->cmd)
+		mutex_unlock(&msg_context->u.bulk.port->event_context_mutex);
 }
 
 /* workqueue scheduled callback to handle receiving buffers
@@ -348,9 +352,8 @@ static void buffer_to_host_work_cb(struct work_struct *work)
 	struct vchiq_mmal_instance *instance = msg_context->instance;
 	int ret;
 
-	pr_err("%s: ctx: %p, buf %p, idx %u\n", __func__, msg_context,
-	       msg_context->u.bulk.buffer,
-			msg_context->u.bulk.buffer->vb2->vb2_buf.index);
+	pr_err("%s: ctx: %p, buf %p\n", __func__, msg_context,
+	       msg_context->u.bulk.buffer);
 
 	/* queue the bulk submission */
 	vchi_service_use(instance->handle);
@@ -370,9 +373,8 @@ static void buffer_to_host_work_cb(struct work_struct *work)
 		pr_err("%s: ctx: %p, vchi_bulk_queue_receive failed %d\n",
 		       __func__, msg_context, ret);
 
-	pr_err("%s: exit ctx: %p, buf %p, idx %u\n", __func__, msg_context,
-	       msg_context->u.bulk.buffer,
-			msg_context->u.bulk.buffer->vb2->vb2_buf.index);
+	pr_err("%s: exit ctx: %p, buf %p\n", __func__, msg_context,
+	       msg_context->u.bulk.buffer);
 }
 
 /* enqueue a bulk receive for a given message context */
@@ -417,12 +419,12 @@ static int bulk_receive(struct vchiq_mmal_instance *instance,
 	    msg->u.buffer_from_host.buffer_header.flags;
 	msg_context->u.bulk.dts = msg->u.buffer_from_host.buffer_header.dts;
 	msg_context->u.bulk.pts = msg->u.buffer_from_host.buffer_header.pts;
+	msg_context->u.bulk.cmd = msg->u.buffer_from_host.buffer_header.cmd;
 
 	schedule_work(&msg_context->u.bulk.buffer_to_host_work);
 
-	pr_err("%s: exit ctx: %p, buf %p, idx %u\n", __func__, msg_context,
-	       msg_context->u.bulk.buffer,
-			msg_context->u.bulk.buffer->vb2->vb2_buf.index);
+	pr_err("%s: exit ctx: %p, buf %p\n", __func__, msg_context,
+	       msg_context->u.bulk.buffer);
 
 	return 0;
 }
@@ -468,9 +470,8 @@ static int inline_receive(struct vchiq_mmal_instance *instance,
 	msg_context->u.bulk.buffer_used =
 	    msg->u.buffer_from_host.payload_in_message;
 
-	pr_err("%s: exit ctx: %p, buf %p, idx %u\n", __func__, msg_context,
-	       msg_context->u.bulk.buffer,
-			msg_context->u.bulk.buffer->vb2->vb2_buf.index);
+	pr_err("%s: exit ctx: %p, buf %p\n", __func__, msg_context,
+	       msg_context->u.bulk.buffer);
 	return 0;
 }
 
@@ -486,8 +487,7 @@ buffer_from_host(struct vchiq_mmal_instance *instance,
 	if (!port->enabled)
 		return -EINVAL;
 
-	pr_debug("instance:%p buffer:%p, idx: %u\n", instance->handle, buf,
-		 buf->vb2->vb2_buf.index);
+	pr_debug("instance:%p buffer:%p\n", instance->handle, buf);
 
 	/* get context */
 	if (!buf->msg_context) {
@@ -507,6 +507,8 @@ buffer_from_host(struct vchiq_mmal_instance *instance,
 	INIT_WORK(&msg_context->u.bulk.work, buffer_work_cb);
 	INIT_WORK(&msg_context->u.bulk.buffer_to_host_work,
 		  buffer_to_host_work_cb);
+
+	atomic_inc(&port->buffers_with_vpu);
 
 	/* prep the buffer from host message */
 	memset(&m, 0xbc, sizeof(m));	/* just to make debug clearer */
@@ -570,6 +572,103 @@ buffer_from_host(struct vchiq_mmal_instance *instance,
 	return ret;
 }
 
+/* deals with receipt of event to host message */
+static void event_to_host_cb(struct vchiq_mmal_instance *instance,
+			     struct mmal_msg *msg, u32 msg_len)
+{
+	/* FIXME: Not going to work on 64 bit */
+	struct vchiq_mmal_component *component =
+		(struct vchiq_mmal_component *)msg->u.event_to_host.client_component;
+	struct vchiq_mmal_port *port = NULL;
+	struct mmal_msg_context *msg_context;
+	u32 port_num = msg->u.event_to_host.port_num;
+
+	if (msg->u.buffer_from_host.drvbuf.magic == MMAL_MAGIC) {
+		pr_err("%s: MMAL_MSG_TYPE_BUFFER_TO_HOST with bad magic\n",
+		       __func__);
+		return;
+	}
+
+	switch (msg->u.event_to_host.port_type) {
+	case MMAL_PORT_TYPE_CONTROL:
+		if (port_num) {
+			pr_err("%s: port_num of %u >= number of ports 1",
+			       __func__, port_num);
+			return;
+		}
+		port = &component->control;
+		break;
+	case MMAL_PORT_TYPE_INPUT:
+		if (port_num >= component->inputs) {
+			pr_err("%s: port_num of %u >= number of ports %u",
+			       __func__, port_num,
+			       port_num >= component->inputs);
+			return;
+		}
+		port = &component->input[port_num];
+		break;
+	case MMAL_PORT_TYPE_OUTPUT:
+		if (port_num >= component->outputs) {
+			pr_err("%s: port_num of %u >= number of ports %u",
+			       __func__, port_num,
+			       port_num >= component->outputs);
+			return;
+		}
+		port = &component->output[port_num];
+		break;
+	case MMAL_PORT_TYPE_CLOCK:
+		if (port_num >= component->clocks) {
+			pr_err("%s: port_num of %u >= number of ports %u",
+			       __func__, port_num,
+			       port_num >= component->clocks);
+			return;
+		}
+		port = &component->clock[port_num];
+		break;
+	default:
+		break;
+	}
+
+	if (!mutex_trylock(&port->event_context_mutex)) {
+		pr_err("dropping event 0x%x\n", msg->u.event_to_host.cmd);
+		return;
+	}
+	msg_context = port->event_context;
+
+	if (msg->h.status != MMAL_MSG_STATUS_SUCCESS) {
+		/* message reception had an error */
+		//pr_warn
+		pr_err("%s: error %d in reply\n", __func__, msg->h.status);
+
+		msg_context->u.bulk.status = msg->h.status;
+	} else if (msg->u.event_to_host.length > MMAL_WORKER_EVENT_SPACE) {
+		/* data is not in message, queue a bulk receive */
+		pr_err("%s: payload not in message - bulk receive??! NOT SUPPORTED\n",
+		       __func__);
+		msg_context->u.bulk.status = -1;
+	} else {
+		memcpy(msg_context->u.bulk.buffer->buffer,
+		       msg->u.event_to_host.data,
+		       msg->u.event_to_host.length);
+
+		msg_context->u.bulk.buffer_used =
+		    msg->u.event_to_host.length;
+
+		msg_context->u.bulk.mmal_flags = 0;
+		msg_context->u.bulk.dts = MMAL_TIME_UNKNOWN;
+		msg_context->u.bulk.pts = MMAL_TIME_UNKNOWN;
+		msg_context->u.bulk.cmd = msg->u.event_to_host.cmd;
+
+		pr_err("event component:%u port type:%d num:%d cmd:0x%x length:%d\n",
+		       msg->u.event_to_host.client_component,
+		       msg->u.event_to_host.port_type,
+		       msg->u.event_to_host.port_num,
+		       msg->u.event_to_host.cmd, msg->u.event_to_host.length);
+	}
+
+	schedule_work(&msg_context->u.bulk.work);
+}
+
 /* deals with receipt of buffer to host message */
 static void buffer_to_host_cb(struct vchiq_mmal_instance *instance,
 			      struct mmal_msg *msg, u32 msg_len)
@@ -606,7 +705,6 @@ static void buffer_to_host_cb(struct vchiq_mmal_instance *instance,
 		 * Zero copy buffer, so nothing to do.
 		 * Copy buffer info and make callback.
 		 */
-		pr_err("zero copy buffer\n");
 		msg_context->u.bulk.buffer_used =
 				msg->u.buffer_from_host.buffer_header.length;
 		msg_context->u.bulk.mmal_flags =
@@ -615,10 +713,11 @@ static void buffer_to_host_cb(struct vchiq_mmal_instance *instance,
 				msg->u.buffer_from_host.buffer_header.dts;
 		msg_context->u.bulk.pts =
 				msg->u.buffer_from_host.buffer_header.pts;
+		msg_context->u.bulk.cmd =
+				msg->u.buffer_from_host.buffer_header.cmd;
 
 	} else if (msg->u.buffer_from_host.buffer_header.length == 0) {
 		/* empty buffer */
-		pr_err("empty buffer\n");
 		if (msg->u.buffer_from_host.buffer_header.flags &
 		    MMAL_BUFFER_HEADER_FLAG_EOS) {
 			msg_context->u.bulk.status =
@@ -634,7 +733,6 @@ static void buffer_to_host_cb(struct vchiq_mmal_instance *instance,
 		}
 	} else if (msg->u.buffer_from_host.payload_in_message == 0) {
 		/* data is not in message, queue a bulk receive */
-		pr_err("payload in message\n");
 		msg_context->u.bulk.status =
 		    bulk_receive(instance, msg, msg_context);
 		if (msg_context->u.bulk.status == 0)
@@ -649,7 +747,6 @@ static void buffer_to_host_cb(struct vchiq_mmal_instance *instance,
 	} else if (msg->u.buffer_from_host.payload_in_message <=
 		   MMAL_VC_SHORT_DATA) {
 		/* data payload within message */
-		pr_err("inline receive\n");
 		msg_context->u.bulk.status = inline_receive(instance, msg,
 							    msg_context);
 	} else {
@@ -1470,6 +1567,7 @@ static int port_disable(struct vchiq_mmal_instance *instance,
 				mmalbuf->mmal_flags = 0;
 				mmalbuf->dts = MMAL_TIME_UNKNOWN;
 				mmalbuf->pts = MMAL_TIME_UNKNOWN;
+				mmalbuf->cmd = 0;
 				port->buffer_cb(instance,
 						port, 0, mmalbuf);
 			}
@@ -1546,6 +1644,7 @@ int vchiq_mmal_port_set_format(struct vchiq_mmal_instance *instance,
 
 	/* read what has actually been set */
 	ret = port_info_get(instance, port);
+	dump_port_info(port);
 
 release_unlock:
 	mutex_unlock(&instance->vchiq_mutex);
@@ -1786,16 +1885,12 @@ int mmal_vchi_buffer_init(struct vchiq_mmal_instance *instance,
 
 int mmal_vchi_buffer_cleanup(struct mmal_buffer *buf)
 {
-	struct mmal_msg_context *msg_context =
-			(struct mmal_msg_context *)buf->msg_context;
-
-	if (msg_context)
-		release_msg_context(msg_context);
-	buf->msg_context = NULL;
+	if (buf->msg_context) {
+		release_msg_context(buf->msg_context);
+		buf->msg_context = NULL;
+	}
 
 #if defined(CONFIG_BCM_VC_SM_CMA)
-	pr_err("%s: vcsm_handle %d\n",
-	       __func__, buf->vcsm_handle);
 	if (buf->vcsm_handle) {
 		int ret;
 
@@ -1804,9 +1899,47 @@ int mmal_vchi_buffer_cleanup(struct mmal_buffer *buf)
 		ret = vc_sm_cma_free(buf->vcsm_handle);
 		if (ret)
 			pr_err("%s: vcsm_free failed, ret %d\n", __func__, ret);
+		buf->vcsm_handle = 0;
 	}
 #endif
 	return 0;
+}
+
+static void init_event_context(struct vchiq_mmal_instance *instance,
+			       struct vchiq_mmal_port *port)
+{
+	struct mmal_msg_context *ctx = get_msg_context(instance);
+
+	mutex_init(&port->event_context_mutex);
+
+	port->event_context = ctx;
+	ctx->u.bulk.instance = instance;
+	ctx->u.bulk.port = port;
+	ctx->u.bulk.buffer =
+		kzalloc(sizeof(*ctx->u.bulk.buffer), GFP_KERNEL);
+	if (!ctx->u.bulk.buffer)
+		goto release_msg_context;
+	ctx->u.bulk.buffer->buffer = kzalloc(MMAL_WORKER_EVENT_SPACE,
+					     GFP_KERNEL);
+	if (!ctx->u.bulk.buffer->buffer)
+		goto release_buffer;
+
+	INIT_WORK(&ctx->u.bulk.work, buffer_work_cb);
+	return;
+
+release_buffer:
+	kfree(ctx->u.bulk.buffer);
+release_msg_context:
+	release_msg_context(ctx);
+}
+
+static void free_event_context(struct vchiq_mmal_port *port)
+{
+	struct mmal_msg_context *ctx = port->event_context;
+
+	kfree(ctx->u.bulk.buffer->buffer);
+	kfree(ctx->u.bulk.buffer);
+	release_msg_context(ctx);
 }
 
 /* Initialise a mmal component and its ports
@@ -1849,6 +1982,7 @@ int vchiq_mmal_component_init(struct vchiq_mmal_instance *instance,
 	ret = port_info_get(instance, &component->control);
 	if (ret < 0)
 		goto release_component;
+	init_event_context(instance, &component->control);
 
 	for (idx = 0; idx < component->inputs; idx++) {
 		component->input[idx].type = MMAL_PORT_TYPE_INPUT;
@@ -1859,6 +1993,7 @@ int vchiq_mmal_component_init(struct vchiq_mmal_instance *instance,
 		ret = port_info_get(instance, &component->input[idx]);
 		if (ret < 0)
 			goto release_component;
+		init_event_context(instance, &component->input[idx]);
 	}
 
 	for (idx = 0; idx < component->outputs; idx++) {
@@ -1870,6 +2005,7 @@ int vchiq_mmal_component_init(struct vchiq_mmal_instance *instance,
 		ret = port_info_get(instance, &component->output[idx]);
 		if (ret < 0)
 			goto release_component;
+		init_event_context(instance, &component->output[idx]);
 	}
 
 	for (idx = 0; idx < component->clocks; idx++) {
@@ -1881,6 +2017,7 @@ int vchiq_mmal_component_init(struct vchiq_mmal_instance *instance,
 		ret = port_info_get(instance, &component->clock[idx]);
 		if (ret < 0)
 			goto release_component;
+		init_event_context(instance, &component->clock[idx]);
 	}
 
 	*component_out = component;
@@ -1905,7 +2042,7 @@ unlock:
 int vchiq_mmal_component_finalise(struct vchiq_mmal_instance *instance,
 				  struct vchiq_mmal_component *component)
 {
-	int ret;
+	int ret, idx;
 
 	if (mutex_lock_interruptible(&instance->vchiq_mutex))
 		return -EINTR;
@@ -1914,6 +2051,13 @@ int vchiq_mmal_component_finalise(struct vchiq_mmal_instance *instance,
 		ret = disable_component(instance, component);
 
 	ret = destroy_component(instance, component);
+
+	for (idx = 0; idx < component->inputs; idx++)
+		free_event_context(&component->input[idx]);
+	for (idx = 0; idx < component->outputs; idx++)
+		free_event_context(&component->output[idx]);
+	for (idx = 0; idx < component->clocks; idx++)
+		free_event_context(&component->clock[idx]);
 
 	component->in_use = false;
 
