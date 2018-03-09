@@ -736,14 +736,15 @@ static int vidioc_s_fmt(struct bcm2835_codec_ctx *ctx, struct v4l2_format *f)
 	q_data->height	= f->fmt.pix.height;
 
 	if (!q_data->fmt->flags & V4L2_FMT_FLAG_COMPRESSED) {
-		f->fmt.pix.bytesperline =
+		q_data->bytesperline =
 				ALIGN((f->fmt.pix.width * q_data->fmt->depth) >> 3,
 				      q_data->fmt->bytesperline_align);
 		q_data->sizeimage = f->fmt.pix.sizeimage;
 	} else {
-		f->fmt.pix.bytesperline = 0;
+		q_data->bytesperline = 0;
 		q_data->sizeimage = DEFAULT_COMPRESSED_BUF_SIZE;
 	}
+	f->fmt.pix.bytesperline = q_data->bytesperline;
 
 	setup_mmal_port_format(q_data, port);
 	ret = vchiq_mmal_port_set_format(ctx->dev->instance, port);
