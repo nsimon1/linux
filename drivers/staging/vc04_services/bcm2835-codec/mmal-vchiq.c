@@ -43,6 +43,12 @@
 /* maximum number of components supported */
 #define VCHIQ_MMAL_MAX_COMPONENTS 10
 
+/*
+ * timeout for synchronous msg responses. Helpful to increase this if stopping
+ * in the VPU debugger.
+ */
+#define SYNC_MSG_TIMEOUT	60
+
 /*#define FULL_MSG_DUMP 1*/
 
 #ifdef DEBUG
@@ -930,7 +936,7 @@ static int send_synchronous_mmal_msg(struct vchiq_mmal_instance *instance,
 		return ret;
 	}
 
-	ret = wait_for_completion_timeout(&msg_context->u.sync.cmplt, 3 * HZ);
+	ret = wait_for_completion_timeout(&msg_context->u.sync.cmplt, SYNC_MSG_TIMEOUT * HZ);
 	if (ret <= 0) {
 		pr_err("error %d waiting for sync completion\n", ret);
 		if (ret == 0)
@@ -1894,7 +1900,7 @@ int mmal_vchi_buffer_cleanup(struct mmal_buffer *buf)
 	if (buf->vcsm_handle) {
 		int ret;
 
-		pr_err("%s: vc_sm_cma_free on handle %d\n", __func__,
+		pr_err("%s: vc_sm_cma_free on handle %08X\n", __func__,
 		       buf->vcsm_handle);
 		ret = vc_sm_cma_free(buf->vcsm_handle);
 		if (ret)

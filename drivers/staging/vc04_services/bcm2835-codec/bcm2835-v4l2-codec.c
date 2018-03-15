@@ -55,8 +55,8 @@ MODULE_PARM_DESC(debug, "activates debug info");
 #define MIN_H 32
 #define MAX_W 1920
 #define MAX_H 1088
-#define DIM_ALIGN_MASK 7 /* 8-byte alignment for line length */
-#define DEFAULT_COMPRESSED_BUF_SIZE	(256 << 10)
+#define BPL_ALIGN 32
+#define DEFAULT_COMPRESSED_BUF_SIZE	(512 << 10)
 
 /* Flags that indicate a format can be used for capture/output */
 #define MEM2MEM_CAPTURE	(1 << 0)
@@ -154,8 +154,13 @@ struct bcm2835_codec_fmt_list formats[] = {
 
 /* Per-queue, driver-specific private data */
 struct bcm2835_codec_q_data {
+	/* Buffer width/height */
 	unsigned int		width;
 	unsigned int		height;
+	/* Crop size used for selection handling */
+	unsigned int		crop_width;
+	unsigned int		crop_height;
+
 	unsigned int		bytesperline;
 	unsigned int		sizeimage;
 	unsigned int		sequence;
@@ -306,14 +311,27 @@ static void setup_mmal_port_format(struct bcm2835_codec_q_data *q_data,
 				   struct vchiq_mmal_port *port)
 {
 	port->format.encoding = q_data->fmt->mmal_fmt;
-	port->es.video.width = ALIGN(q_data->width, 32);
-	port->es.video.height = ALIGN(q_data->height, 16);
-	port->es.video.crop.x = 0;
-	port->es.video.crop.y = 0;
-	port->es.video.crop.width = q_data->width;
-	port->es.video.crop.height = q_data->height;
-	port->es.video.frame_rate.num = 0;
-	port->es.video.frame_rate.den = 1;
+	if (!(q_data->fmt->flags & V4L2_FMT_FLAG_COMPRESSED)) {
+		/* Raw image format - set width/height */
+		port->es.video.width = ALIGN(q_data->width, 32);
+		port->es.video.height = ALIGN(q_data->height, 16);
+		port->es.video.crop.x = 0;
+		port->es.video.crop.y = 0;
+		port->es.video.crop.width = q_data->width;
+		port->es.video.crop.height = q_data->height;
+		port->es.video.frame_rate.num = 0;
+		port->es.video.frame_rate.den = 1;
+	} else {
+		/* Compressed format - leave resolution as 0 */
+		port->es.video.width = 0;
+		port->es.video.height = 0;
+		port->es.video.crop.x = 0;
+		port->es.video.crop.y = 0;
+		port->es.video.crop.width = 0;
+		port->es.video.crop.height = 0;
+		port->es.video.frame_rate.num = 0;
+		port->es.video.frame_rate.den = 1;
+	}
 
 	port->current_buffer.size = q_data->sizeimage;
 };
@@ -633,20 +651,22 @@ static int vidioc_g_fmt_vid_cap(struct file *file, void *priv,
 
 static int vidioc_try_fmt(struct v4l2_format *f, struct bcm2835_codec_fmt *fmt)
 {
-	/* V4L2 specification suggests the driver corrects the format struct
-	 * if any of the dimensions is unsupported */
-	if (f->fmt.pix.height < MIN_H)
-		f->fmt.pix.height = MIN_H;
-	else if (f->fmt.pix.height > MAX_H)
+	/*
+	 * The V4L2 specification requires the driver to correct the format
+	 * struct if any of the dimensions is unsupported
+	 */
+	if (f->fmt.pix.width > MAX_W)
+		f->fmt.pix.width = MAX_W;
+	if (f->fmt.pix.height > MAX_H)
 		f->fmt.pix.height = MAX_H;
 
-	if (f->fmt.pix.width < MIN_W)
-		f->fmt.pix.width = MIN_W;
-	else if (f->fmt.pix.width > MAX_W)
-		f->fmt.pix.width = MAX_W;
-
-	f->fmt.pix.width &= ~DIM_ALIGN_MASK;
 	if (!fmt->flags & V4L2_FMT_FLAG_COMPRESSED) {
+		/* Only clip min w/h on capture. Treat 0x0 as unknown. */
+		if (f->fmt.pix.width < MIN_W)
+			f->fmt.pix.width = MIN_W;
+		if (f->fmt.pix.height < MIN_H)
+			f->fmt.pix.height = MIN_H;
+
 		f->fmt.pix.bytesperline =
 				ALIGN((f->fmt.pix.width * fmt->depth) >> 3,
 				      fmt->bytesperline_align);
@@ -713,6 +733,10 @@ static int vidioc_s_fmt(struct bcm2835_codec_ctx *ctx, struct v4l2_format *f)
 	struct vchiq_mmal_port *port;
 	int ret;
 
+	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,	"Setting format for type %d, wxh: %dx%d, fmt: %08x, size %u\n",
+		f->type, f->fmt.pix.width, f->fmt.pix.height, f->fmt.pix.pixelformat,
+		f->fmt.pix.sizeimage);
+
 	vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx, f->type);
 	if (!vq)
 		return -EINVAL;
@@ -757,12 +781,44 @@ static int vidioc_s_fmt(struct bcm2835_codec_ctx *ctx, struct v4l2_format *f)
 			 __func__, q_data->sizeimage, port->minimum_buffer.size);
 
 
-	dprintk(ctx->dev,
-		"Setting format for type %d, wxh: %dx%d, fmt: %08x, size %u\n",
+	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,	"Set format for type %d, wxh: %dx%d, fmt: %08x, size %u\n",
 		f->type, q_data->width, q_data->height, q_data->fmt->fourcc,
 		q_data->sizeimage);
 
-	return 0;
+	if (ctx->dev->decode && q_data->fmt->flags & V4L2_FMT_FLAG_COMPRESSED &&
+	    f->fmt.pix.width && f->fmt.pix.height) {
+		/*
+		 * On the decoder, if provided with a resolution on the input
+		 * side, then replicate that to the output side.
+		 * GStreamer appears not to support V4L2_EVENT_SOURCE_CHANGE,
+		 * nor sets up a resolution on the output side, therefore
+		 * we can't decode anything at a resolution other than the
+		 * default one.
+		 */
+		struct bcm2835_codec_q_data *q_data_dst =
+						&ctx->q_data[V4L2_M2M_DST];
+		struct vchiq_mmal_port *port_dst = &ctx->component->output[0];
+
+		v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,	"Copying input res of %ux%u to output\n",
+			q_data->width, q_data->height);
+
+		q_data_dst->width = q_data->width;
+		q_data_dst->height = q_data->height;
+
+		q_data_dst->bytesperline =
+			ALIGN((f->fmt.pix.width * q_data_dst->fmt->depth) >> 3,
+			      q_data_dst->fmt->bytesperline_align);
+		q_data_dst->sizeimage = (ALIGN(q_data_dst->width, 16) *
+					q_data_dst->bytesperline *
+					q_data->fmt->size_multiplier_x2) >> 1;
+
+		setup_mmal_port_format(q_data_dst, port_dst);
+		ret = vchiq_mmal_port_set_format(ctx->dev->instance, port_dst);
+		if (ret)
+			v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed vchiq_mmal_port_set_format on output port, ret %d\n",
+				 __func__, ret);
+	}
+	return ret;
 }
 
 static int vidioc_s_fmt_vid_cap(struct file *file, void *priv,
@@ -796,6 +852,73 @@ static int vidioc_s_fmt_vid_out(struct file *file, void *priv,
 	}
 	return ret;
 }
+
+#if 0
+/* COMING SOON */
+static int vidioc_g_selection(struct file *file, void *priv,
+			      struct v4l2_selection *s)
+{
+	struct bcm2835_codec_ctx *ctx = file2ctx(priv);
+	struct mtk_q_data *q_data;
+
+	if ((s->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) ^ !ctx->dev->decode)
+		/* CAPTURE on encode, or OUTPUT on decode - not valid. */
+		return -EINVAL;
+
+	q_data = &ctx->q_data[MTK_Q_DATA_DST];
+
+	switch (s->target) {
+	case V4L2_SEL_TGT_COMPOSE_DEFAULT:
+		s->r.left = 0;
+		s->r.top = 0;
+		s->r.width = ctx->picinfo.pic_w;
+		s->r.height = ctx->picinfo.pic_h;
+		break;
+	case V4L2_SEL_TGT_COMPOSE_BOUNDS:
+		s->r.left = 0;
+		s->r.top = 0;
+		s->r.width = ctx->picinfo.buf_w;
+		s->r.height = ctx->picinfo.buf_h;
+		break;
+	case V4L2_SEL_TGT_COMPOSE:
+		if (vdec_if_get_param(ctx, GET_PARAM_CROP_INFO, &(s->r))) {
+			/* set to default value if header info not ready yet*/
+			s->r.left = 0;
+			s->r.top = 0;
+			s->r.width = q_data->visible_width;
+			s->r.height = q_data->visible_height;
+		}
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int vidioc_s_selection(struct file *file, void *priv,
+			      struct v4l2_selection *s)
+{
+	struct bcm2835_codec_ctx *ctx = file2ctx(priv);
+
+	if ((s->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) ^ !ctx->dev->decode)
+		/* CAPTURE on encode, or OUTPUT on decode - not valid. */
+		return -EINVAL;
+
+	switch (s->target) {
+	case V4L2_SEL_TGT_COMPOSE:
+		s->r.left = 0;
+		s->r.top = 0;
+		s->r.width = ctx->picinfo.pic_w;
+		s->r.height = ctx->picinfo.pic_h;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+#endif
 
 static int vidioc_subscribe_evt(struct v4l2_fh *fh,
 				const struct v4l2_event_subscription *sub)
@@ -910,10 +1033,12 @@ static const struct v4l2_ioctl_ops bcm2835_codec_ioctl_ops = {
 	.vidioc_streamon	= v4l2_m2m_ioctl_streamon,
 	.vidioc_streamoff	= v4l2_m2m_ioctl_streamoff,
 
+	//.vidioc_g_selection	= vidioc_g_selection,
+	//.vidioc_s_selection	= vidioc_s_selection,
+
 	.vidioc_subscribe_event = vidioc_subscribe_evt,
 	.vidioc_unsubscribe_event = v4l2_event_unsubscribe,
 };
-
 
 /*
  * Queue operations
@@ -993,7 +1118,8 @@ static int bcm2835_codec_buf_prepare(struct vb2_buffer *vb)
 		return -EINVAL;
 	}
 
-	vb2_set_plane_payload(vb, 0, q_data->sizeimage);
+	if (!V4L2_TYPE_IS_OUTPUT(vb->vb2_queue->type))
+		vb2_set_plane_payload(vb, 0, q_data->sizeimage);
 
 #if defined(CONFIG_BCM_VC_SM_CMA)
 	/*
@@ -1267,11 +1393,18 @@ static int bcm2835_codec_open(struct file *file)
 			&enable, sizeof(enable));
 #endif
 	ctx->q_data[V4L2_M2M_SRC].fmt = get_default_format(dev->decode, false);
-	ctx->q_data[V4L2_M2M_SRC].width = 640;
-	ctx->q_data[V4L2_M2M_SRC].height = 480;
-
-	ctx->q_data[V4L2_M2M_DST] = ctx->q_data[V4L2_M2M_SRC];
 	ctx->q_data[V4L2_M2M_DST].fmt = get_default_format(dev->decode, true);
+	if (dev->decode) {
+		ctx->q_data[V4L2_M2M_SRC].width = 0;
+		ctx->q_data[V4L2_M2M_SRC].height = 0;
+		ctx->q_data[V4L2_M2M_DST].width = 640;
+		ctx->q_data[V4L2_M2M_DST].height = 480;
+	} else {
+		ctx->q_data[V4L2_M2M_SRC].width = 640;
+		ctx->q_data[V4L2_M2M_SRC].height = 480;
+		ctx->q_data[V4L2_M2M_DST].width = 0;
+		ctx->q_data[V4L2_M2M_DST].height = 0;
+	}
 
 	ctx->colorspace = V4L2_COLORSPACE_REC709;
 
@@ -1282,6 +1415,7 @@ static int bcm2835_codec_open(struct file *file)
 			       &ctx->component->output[0]);
 
 	if (!dev->decode)
+		/* CHECK: is this still required as we have a ctrl for bitrate? */
 		ctx->component->output[0].format.bitrate = 10 * 1000 * 1000;
 
 	rc = vchiq_mmal_port_set_format(dev->instance,
