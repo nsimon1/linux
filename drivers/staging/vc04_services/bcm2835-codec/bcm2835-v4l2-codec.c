@@ -93,6 +93,34 @@ static struct bcm2835_codec_fmt raw_formats[] = {
 		.flags = 0,
 		.mmal_fmt = MMAL_ENCODING_I420,
 		.size_multiplier_x2 = 3,
+	}, {
+		.fourcc	= V4L2_PIX_FMT_YVU420,
+		.depth	= 8,
+		.bytesperline_align = 32,
+		.flags = 0,
+		.mmal_fmt = MMAL_ENCODING_YV12,
+		.size_multiplier_x2 = 3,
+	}, {
+		.fourcc	= V4L2_PIX_FMT_NV12,
+		.depth	= 8,
+		.bytesperline_align = 32,
+		.flags = 0,
+		.mmal_fmt = MMAL_ENCODING_NV12,
+		.size_multiplier_x2 = 3,
+	}, {
+		.fourcc	= V4L2_PIX_FMT_NV21,
+		.depth	= 8,
+		.bytesperline_align = 32,
+		.flags = 0,
+		.mmal_fmt = MMAL_ENCODING_NV21,
+		.size_multiplier_x2 = 3,
+	}, {
+		.fourcc	= V4L2_PIX_FMT_RGB565,
+		.depth	= 8,
+		.bytesperline_align = 32,
+		.flags = 0,
+		.mmal_fmt = MMAL_ENCODING_RGB16,
+		.size_multiplier_x2 = 4,
 	},
 };
 
@@ -131,7 +159,17 @@ static struct bcm2835_codec_fmt encoded_formats[] = {
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
 		.mmal_fmt = MMAL_ENCODING_MP2V,
 		.decode_only = true,
+	}, {
+		.fourcc	= V4L2_PIX_FMT_VP8,
+		.depth	= 0,
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+		.mmal_fmt = MMAL_ENCODING_VP8,
+		.decode_only = true,
 	},
+	/*
+	 * This list couold include VP6 and Theorafor decode, but V4L2 doesn't
+	 * support them.
+	 */
 };
 
 struct bcm2835_codec_fmt_list {
@@ -322,13 +360,20 @@ static void setup_mmal_port_format(struct bcm2835_codec_q_data *q_data,
 		port->es.video.frame_rate.num = 0;
 		port->es.video.frame_rate.den = 1;
 	} else {
-		/* Compressed format - leave resolution as 0 */
-		port->es.video.width = 0;
-		port->es.video.height = 0;
+		/* Compressed format - leave resolution as 0 for decode */
+		if (0 /*dev->decode*/) {
+			port->es.video.width = 0;
+			port->es.video.height = 0;
+			port->es.video.crop.width = 0;
+			port->es.video.crop.height = 0;
+		} else {
+			port->es.video.width = ALIGN(q_data->width, 32);
+			port->es.video.height = ALIGN(q_data->height, 16);
+			port->es.video.crop.width = q_data->width;
+			port->es.video.crop.height = q_data->height;
+		}
 		port->es.video.crop.x = 0;
 		port->es.video.crop.y = 0;
-		port->es.video.crop.width = 0;
-		port->es.video.crop.height = 0;
 		port->es.video.frame_rate.num = 0;
 		port->es.video.frame_rate.den = 1;
 	}
@@ -534,6 +579,8 @@ static void device_run(void *priv)
 		ret = vchiq_mmal_submit_buffer(dev->instance,
 					       &ctx->component->input[0],
 					       &src_m2m_buf->mmal);
+		v4l2_err(&ctx->dev->v4l2_dev, "%s: Submitted ip buffer len %u, pts %llu\n",
+				 __func__, src_m2m_buf->mmal.length, src_m2m_buf->mmal.pts);
 		if (ret)
 			v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed submitting ip buffer\n",
 				 __func__);
@@ -1402,8 +1449,8 @@ static int bcm2835_codec_open(struct file *file)
 	} else {
 		ctx->q_data[V4L2_M2M_SRC].width = 640;
 		ctx->q_data[V4L2_M2M_SRC].height = 480;
-		ctx->q_data[V4L2_M2M_DST].width = 0;
-		ctx->q_data[V4L2_M2M_DST].height = 0;
+		ctx->q_data[V4L2_M2M_DST].width = 640;
+		ctx->q_data[V4L2_M2M_DST].height = 480;
 	}
 
 	ctx->colorspace = V4L2_COLORSPACE_REC709;
