@@ -192,6 +192,10 @@ struct bcm2835_codec_fmt_list formats[] = {
 
 /* Per-queue, driver-specific private data */
 struct bcm2835_codec_q_data {
+	/*
+	 * These parameters should be treated as gospel, with everything else
+	 * being determined from them.
+	 */
 	/* Buffer width/height */
 	unsigned int		width;
 	unsigned int		height;
@@ -355,8 +359,8 @@ static void setup_mmal_port_format(struct bcm2835_codec_q_data *q_data,
 		port->es.video.height = ALIGN(q_data->height, 16);
 		port->es.video.crop.x = 0;
 		port->es.video.crop.y = 0;
-		port->es.video.crop.width = q_data->width;
-		port->es.video.crop.height = q_data->height;
+		port->es.video.crop.width = q_data->crop_width;
+		port->es.video.crop.height = q_data->crop_height;
 		port->es.video.frame_rate.num = 0;
 		port->es.video.frame_rate.den = 1;
 	} else {
@@ -369,8 +373,8 @@ static void setup_mmal_port_format(struct bcm2835_codec_q_data *q_data,
 		} else {
 			port->es.video.width = ALIGN(q_data->width, 32);
 			port->es.video.height = ALIGN(q_data->height, 16);
-			port->es.video.crop.width = q_data->width;
-			port->es.video.crop.height = q_data->height;
+			port->es.video.crop.width = q_data->crop_width;
+			port->es.video.crop.height = q_data->crop_height;
 		}
 		port->es.video.crop.x = 0;
 		port->es.video.crop.y = 0;
@@ -900,44 +904,54 @@ static int vidioc_s_fmt_vid_out(struct file *file, void *priv,
 	return ret;
 }
 
-#if 0
-/* COMING SOON */
 static int vidioc_g_selection(struct file *file, void *priv,
 			      struct v4l2_selection *s)
 {
-	struct bcm2835_codec_ctx *ctx = file2ctx(priv);
-	struct mtk_q_data *q_data;
+	struct bcm2835_codec_ctx *ctx = file2ctx(file);
+	struct bcm2835_codec_q_data *q_data;
 
 	if ((s->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) ^ !ctx->dev->decode)
 		/* CAPTURE on encode, or OUTPUT on decode - not valid. */
 		return -EINVAL;
 
-	q_data = &ctx->q_data[MTK_Q_DATA_DST];
+	q_data = get_q_data(ctx, s->type);
 
-	switch (s->target) {
-	case V4L2_SEL_TGT_COMPOSE_DEFAULT:
-		s->r.left = 0;
-		s->r.top = 0;
-		s->r.width = ctx->picinfo.pic_w;
-		s->r.height = ctx->picinfo.pic_h;
-		break;
-	case V4L2_SEL_TGT_COMPOSE_BOUNDS:
-		s->r.left = 0;
-		s->r.top = 0;
-		s->r.width = ctx->picinfo.buf_w;
-		s->r.height = ctx->picinfo.buf_h;
-		break;
-	case V4L2_SEL_TGT_COMPOSE:
-		if (vdec_if_get_param(ctx, GET_PARAM_CROP_INFO, &(s->r))) {
-			/* set to default value if header info not ready yet*/
+	if (ctx->dev->decode) {
+		switch (s->target) {
+		case V4L2_SEL_TGT_COMPOSE_DEFAULT:
+		case V4L2_SEL_TGT_COMPOSE:
 			s->r.left = 0;
 			s->r.top = 0;
-			s->r.width = q_data->visible_width;
-			s->r.height = q_data->visible_height;
+			s->r.width = q_data->crop_width;
+			s->r.height = q_data->crop_height;
+			break;
+		case V4L2_SEL_TGT_COMPOSE_BOUNDS:
+			s->r.left = 0;
+			s->r.top = 0;
+			s->r.width = q_data->width;
+			s->r.height = q_data->height;
+			break;
+		default:
+			return -EINVAL;
 		}
-		break;
-	default:
-		return -EINVAL;
+	} else {
+		switch (s->target) {
+		case V4L2_SEL_TGT_CROP_DEFAULT:
+		case V4L2_SEL_TGT_CROP_BOUNDS:
+			s->r.top = 0;
+			s->r.left = 0;
+			s->r.width = q_data->width;
+			s->r.height = q_data->height;
+			break;
+		case V4L2_SEL_TGT_CROP:
+			s->r.top = 0;
+			s->r.left = 0;
+			s->r.width = q_data->crop_width;
+			s->r.height = q_data->crop_height;
+			break;
+		default:
+			return -EINVAL;
+		}
 	}
 
 	return 0;
@@ -946,26 +960,47 @@ static int vidioc_g_selection(struct file *file, void *priv,
 static int vidioc_s_selection(struct file *file, void *priv,
 			      struct v4l2_selection *s)
 {
-	struct bcm2835_codec_ctx *ctx = file2ctx(priv);
+	struct bcm2835_codec_ctx *ctx = file2ctx(file);
+	struct bcm2835_codec_q_data *q_data;
 
+
+printk("%s: ctx %p, type %d, q_data %p, target %d\n", __func__, ctx, s->type, q_data, s->target);
 	if ((s->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) ^ !ctx->dev->decode)
 		/* CAPTURE on encode, or OUTPUT on decode - not valid. */
 		return -EINVAL;
 
-	switch (s->target) {
-	case V4L2_SEL_TGT_COMPOSE:
-		s->r.left = 0;
-		s->r.top = 0;
-		s->r.width = ctx->picinfo.pic_w;
-		s->r.height = ctx->picinfo.pic_h;
-		break;
-	default:
-		return -EINVAL;
+	q_data = get_q_data(ctx, s->type);
+printk("%s: ctx %p, type %d, q_data %p, target %d\n", __func__, ctx, s->type, q_data, s->target);
+	if (ctx->dev->decode) {
+		switch (s->target) {
+		case V4L2_SEL_TGT_COMPOSE:
+			/* Copy mtk-vcodec and do not allow settings crop */
+			s->r.left = 0;
+			s->r.top = 0;
+			s->r.width = q_data->crop_width;
+			s->r.height = q_data->crop_height;
+			break;
+		default:
+			return -EINVAL;
+		}
+	} else {
+		switch (s->target) {
+		case V4L2_SEL_TGT_CROP:
+			/* Only support crop from (0,0) */
+			s->r.top = 0;
+			s->r.left = 0;
+			s->r.width = min(s->r.width, q_data->width);
+			s->r.height = min(s->r.height, q_data->height);
+			q_data->crop_width = s->r.width;
+			q_data->crop_height = s->r.height;
+			break;
+		default:
+			return -EINVAL;
+		}
 	}
 
 	return 0;
 }
-#endif
 
 static int vidioc_subscribe_evt(struct v4l2_fh *fh,
 				const struct v4l2_event_subscription *sub)
@@ -1080,8 +1115,8 @@ static const struct v4l2_ioctl_ops bcm2835_codec_ioctl_ops = {
 	.vidioc_streamon	= v4l2_m2m_ioctl_streamon,
 	.vidioc_streamoff	= v4l2_m2m_ioctl_streamoff,
 
-	//.vidioc_g_selection	= vidioc_g_selection,
-	//.vidioc_s_selection	= vidioc_s_selection,
+	.vidioc_g_selection	= vidioc_g_selection,
+	.vidioc_s_selection	= vidioc_s_selection,
 
 	.vidioc_subscribe_event = vidioc_subscribe_evt,
 	.vidioc_unsubscribe_event = v4l2_event_unsubscribe,
